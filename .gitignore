@@ -1,0 +1,26 @@
+# Exclure les dossiers contenant des scripts par défaut (on forcera l'ajout de ce qu'on veut)
+bin/
+
+# Ignorer de manière récursive tous les dossiers lourds des deux projets
+data/
+raw/
+containers/
+resources/
+ref/
+results/
+resultats/
+PICRUST2_OUT/
+tmp_rep/
+log/
+
+# Ignorer les gros fichiers d'export (comme ton matam_salmon_master_export.tsv)
+*.tsv
+*.csv
+*.fasta
+*.fastq
+*.fastq.gz
+
+# Fichiers R et système
+.Rhistory
+.RData
+*.save
