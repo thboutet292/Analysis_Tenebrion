@@ -1,6 +1,6 @@
 # Pipeline Métagénomique 16S — *Tenebrio molitor*
 
-Analyse bioinformatique des communautés bactériennes associées aux différents stades de développement de *Tenebrio molitor* (Coléoptère, Tenebrionidae) par séquençage d'amplicons 16S et Shotgun.
+Analyse bioinformatique des communautés bactériennes associées aux différents stades de développement de *Tenebrio molitor* (Coléoptère, Tenebrionidae) par séquençage du 16S full-length et Shotgun.
 
 ---
 
