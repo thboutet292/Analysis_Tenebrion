@@ -159,4 +159,4 @@ Données brutes (FASTQ)
 
 ## Auteur
 
-Thomas Boutet — Projet Ténébrion, analyse métagénomique 16S de *Tenebrio molitor*
+Thomas BOUTET — Projet Ténébrion, analyse métagénomique 16S de *Tenebrio molitor*
