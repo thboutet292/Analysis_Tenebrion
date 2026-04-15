@@ -35,7 +35,7 @@ L'ensemble du pipeline est conçu pour s'exécuter sur un **cluster de calcul HP
 
 ```
 16_tenebrion/
-├── bin/                        # Scripts de soumission SLURM (cœur du pipeline)
+├── bin/                        # Scripts de soumission SLURM 
 │   ├── 16S_fastqc.slurm        # Étape 1 — Contrôle qualité initial
 │   ├── 16S_multiqc.slurm       # Étape 2 — Agrégation des rapports QC
 │   ├── pull_MATAM_sif.slurm    # Étape 3 — Installer MATAM en singularity
