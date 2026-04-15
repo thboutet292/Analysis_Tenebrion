@@ -38,8 +38,12 @@ L'ensemble du pipeline est conçu pour s'exécuter sur un **cluster de calcul HP
 ├── bin/                        # Scripts de soumission SLURM (cœur du pipeline)
 │   ├── 16S_fastqc.slurm        # Étape 1 — Contrôle qualité initial
 │   ├── 16S_multiqc.slurm       # Étape 2 — Agrégation des rapports QC
-│   ├── pull_MATAM_sif.slurm    # Étape 3 — Initialisation des environnements
-│   └── 16S_MATAM.slurm         # Étape 4 — Pipeline hybride de production
+│   ├── pull_MATAM_sif.slurm    # Étape 3 — Installer MATAM en singularity
+│   ├── 16S_MATAM.slurm         # Étape 4 — Pipeline hybride de production
+│   ├── pull_PICRUST2.sif       # Étape 5 — Installer PIRCRUST2 en singularity
+│   └── 16S_PICRUST2.slurm      # Étape 6 — Utilisation de PICRUST2
+|
+|
 ├── containers/                 # Images Singularity (.sif)
 ├── data/
 │   └── raw/                    # Fichiers bruts (*_R1.fastq.gz, *_R2.fastq.gz)
