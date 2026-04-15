@@ -27,7 +27,7 @@ L'ensemble du pipeline est conçu pour s'exécuter sur un **cluster de calcul HP
 | USEARCH | 9.2.64 | Module SLURM | Déréplication ultrarapide des séquences |
 | MATAM | 1.6.1 / 1.6.2* | Images Singularity | Assemblage de novo ciblé sur l'ARNr 16S |
 | Salmon | 1.10.2 | Conda 23.3.1 | Quantification par pseudo-alignement et algorithme EM |
-| PICRUST2 | 2.5.2 | Images Singularity | annotation fonctionnelle |
+| PICRUST2 | 2.5.2 | Images Singularity | Annotation fonctionnelle |
 
 ---
 
