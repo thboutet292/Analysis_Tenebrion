@@ -115,7 +115,7 @@ Le script enchaîne quatre sous-étapes :
 
 **Déréplication (USEARCH).** Les lectures strictement identiques sont fusionnées en entités uniques. Cette étape agit comme une forte compression de l'information et réduit considérablement l'espace de recherche et la complexité temporelle pour l'assembleur qui suit.
 
-**Assemblage de novo (MATAM).** Contrairement aux approches ASV standards, MATAM utilise les short-reads et la base SILVA pour reconstruire des séquences d'ARNr 16S quasi-complètes (scaffolds). Cette reconstruction permet d'atteindre une résolution taxonomique bien plus fine, au prix d'un calcul plus intensif.
+**Assemblage de novo (MATAM).** Contrairement aux approches ASV standards, MATAM utilise les short-reads et la base SILVA pour reconstruire des séquences d'ARNr 16S quasi-complètes (scaffolds). Cette reconstruction permet d'atteindre une résolution taxonomique bien plus fine.
 
 **Quantification probabiliste (Salmon).** Une fois le catalogue de séquences 16S assemblé, Salmon l'indexe et aligne virtuellement les lectures initiales dessus. L'algorithme **Expectation-Maximization (EM)** résout l'ambiguïté des reads s'alignant avec une probabilité équivalente sur plusieurs taxons proches, produisant une table d'abondance finale robuste.
 
