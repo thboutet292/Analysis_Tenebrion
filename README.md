@@ -8,7 +8,7 @@ Analyse bioinformatique des communautés bactériennes associées aux différent
 
 Traiter des données de séquençage brutes pour aboutir à une quantification précise des taxons bactériens, en utilisant une approche **hybride d'assemblage de novo** ciblée sur le gène de l'ARNr 16S.
 
-Contrairement aux approches ASV standards, ce pipeline reconstruit des séquences 16S quasi-complètes (scaffolds) par assemblage de novo via MATAM, permettant une résolution taxonomique bien supérieure. Les abondances sont ensuite quantifiées de manière probabiliste par Salmon via l'algorithme Expectation-Maximization (EM).
+Contrairement aux approches ASV standards, ce pipeline reconstruit des séquences 16S quasi-complètes (scaffolds) par assemblage de novo via MATAM, permettant une résolution taxonomique bien supérieure. Les abondances sont ensuite quantifiées de manière probabiliste par Salmon via l'algorithme Expectation-Maximization (EM), puis chaque séquence est assignée taxonomiquement jusqu'au rang de l'espèce via DADA2 et la base de référence SILVA.
 
 L'ensemble du pipeline est conçu pour s'exécuter sur un **cluster de calcul HPC** via le gestionnaire de tâches **SLURM**, avec parallélisation par job arrays.
 
@@ -27,7 +27,8 @@ L'ensemble du pipeline est conçu pour s'exécuter sur un **cluster de calcul HP
 | USEARCH | 9.2.64 | Module SLURM | Déréplication ultrarapide des séquences |
 | MATAM | 1.6.1 / 1.6.2* | Images Singularity | Assemblage de novo ciblé sur l'ARNr 16S |
 | Salmon | 1.10.2 | Conda 23.3.1 | Quantification par pseudo-alignement et algorithme EM |
-| PICRUST2 | 2.5.2 | Images Singularity | Annotation fonctionnelle |
+| R / DADA2 | — | Script R local | Assignation taxonomique (classifieur Bayésien + identité exacte) |
+| SILVA | v138.2 | Base de référence locale | Référence taxonomique pour l'assignation 16S |
 
 ---
 
@@ -35,23 +36,26 @@ L'ensemble du pipeline est conçu pour s'exécuter sur un **cluster de calcul HP
 
 ```
 16_tenebrion/
-├── bin/                        # Scripts de soumission SLURM 
+├── bin/                        # Scripts de soumission SLURM
 │   ├── 16S_fastqc.slurm        # Étape 1 — Contrôle qualité initial
 │   ├── 16S_multiqc.slurm       # Étape 2 — Agrégation des rapports QC
 │   ├── pull_MATAM_sif.slurm    # Étape 3 — Installer MATAM en singularity
 │   ├── 16S_MATAM.slurm         # Étape 4 — Pipeline hybride de production
-│   ├── pull_PICRUST2.sif       # Étape 5 — Installer PIRCRUST2 en singularity
-│   └── 16S_PICRUST2.slurm      # Étape 6 — Utilisation de PICRUST2
-|
-|
+│   └── assign_taxo_MATAM.R     # Étape 5 — Assignation taxonomique (DADA2/SILVA)
+│
 ├── containers/                 # Images Singularity (.sif)
 ├── data/
-│   └── raw/                    # Fichiers bruts (*_R1.fastq.gz, *_R2.fastq.gz)
+│   ├── raw/                    # Fichiers bruts (*_R1.fastq.gz, *_R2.fastq.gz)
+│   └── 16S/
+│       ├── MATAM/              # Table de séquences compilée (sortie Salmon)
+│       ├── SILVA/              # Bases de référence SILVA v138.2
+│       └── tax_info_sans_chimere.rds   # Dictionnaire taxonomique (sortie étape 5)
 ├── log/                        # Fichiers de log SLURM (.out / .err)
-├── resources/                  # Base de données SILVA + environnements Conda
+├── resources/                  # Environnements Conda
 └── results/
     ├── qc/                     # Rapports FastQC et MultiQC
-    └── PRODUCTION_HYBRID/      # Scaffolds MATAM + table d'abondance Salmon
+    ├── PRODUCTION_HYBRID/      # Scaffolds MATAM + table d'abondance Salmon
+    └── all_matam_salmon_qiime_like_table_counts_wSpecies.tsv  # Table finale (sortie étape 5)
 ```
 
 ---
@@ -65,6 +69,7 @@ sbatch bin/16S_fastqc.slurm
 sbatch bin/16S_multiqc.slurm
 sbatch bin/pull_MATAM_sif.slurm
 sbatch bin/16S_MATAM.slurm
+Rscript bin/assign_taxo_MATAM.R
 ```
 
 Chaque étape doit être complétée avant de soumettre la suivante. Les étapes 1 et 4 s'exécutent en mode SLURM Array.
@@ -121,6 +126,26 @@ Le script enchaîne quatre sous-étapes :
 
 ---
 
+### Étape 5 — `assign_taxo_MATAM.R` : Assignation taxonomique
+
+**Objectif :** Assigner une taxonomie complète (jusqu'au rang de l'espèce) à chaque séquence assemblée par MATAM, et produire une table d'abondance au format standard QIIME2.
+
+Le script prend en entrée la table de séquences compilée produite par Salmon (`all_matam_sequences_compiled.tsv`) et enchaîne cinq sous-étapes :
+
+**Déduplication des séquences.** Seules les séquences uniques sont extraites avant l'assignation, afin d'éviter de classifier plusieurs fois la même séquence présente dans plusieurs échantillons. Le tableau complet est conservé pour la jointure finale.
+
+**Assignation au Genre (classifieur Bayésien, `assignTaxonomy`).** Le classifieur Bayésien naïf de DADA2 (Wang et al. 2007) est appliqué contre la base SILVA v138.2, avec un seuil de bootstrap minimal de 80 %. Les rangs en dessous de ce seuil restent `NA` plutôt que de forcer une assignation incertaine. La parallélisation interne de DADA2 (OpenMP) est activée.
+
+**Assignation à l'Espèce (`addSpecies`, parallélisée manuellement).** `addSpecies()` recherche une correspondance à 100 % d'identité dans la base SILVA. Cette opération étant séquentielle par nature, elle est parallélisée manuellement par paquets de 2 000 séquences via `mclapply()`, en réservant 3 cœurs pour la stabilité du système.
+
+**Filtrage biologique minimal.** Seules les séquences sans assignation au rang du Règne (`Kingdom = NA`) sont supprimées — elles correspondent très probablement à des chimères ou artéfacts. Les rangs inférieurs non résolus (`NA`) sont conservés car ils représentent une information biologique valide.
+
+**Double export.** Le script produit deux fichiers :
+- `tax_info_sans_chimere.rds` : dictionnaire séquence → taxonomie complète, au format RDS (pour PICRUSt2).
+- `all_matam_salmon_qiime_like_table_counts_wSpecies.tsv` : table d'abondance pivotée (lignes = taxons au format `d__`;`p__`;...;`s__`, colonnes = échantillons), conforme à la convention QIIME2/BIOM.
+
+---
+
 ## Schéma du pipeline
 
 ```
@@ -145,7 +170,16 @@ Données brutes (FASTQ)
 [4c] Assemblage         Reconstruction de scaffolds 16S quasi-complets (MATAM)
         |
         v
-[4d] Quantification     Table d'abondance taxonomique (Salmon + EM)
+[4d] Quantification     Table d'abondance par séquence (Salmon + EM)
+        |
+        v
+[5a] Assignation Genre  Classifieur Bayésien DADA2 × SILVA v138.2 (minBoot=80)
+        |
+        v
+[5b] Assignation Espèce addSpecies() identité 100% × SILVA (mclapply, chunks 2000)
+        |
+        v
+[5c] Export             Dictionnaire .rds + Table QIIME2 .tsv
 ```
 
 ---
@@ -156,6 +190,8 @@ Données brutes (FASTQ)
 - **Singularity / Apptainer** disponible en tant que binaire système
 - Modules disponibles sur le cluster : `fastqc/0.11.7`, `MultiQC/1.7`, `python/3.7.1`, `gcc/4.8.4`, `gcc/8.1.0`, `usearch/9.2.64`
 - Environnement **Conda** (version 23.3.1) incluant Salmon 1.10.2
+- **R** avec les packages : `dada2`, `dplyr`, `tidyr`, `readr`, `parallel`
+- Bases de référence SILVA v138.2 (`toGenus_trainset.fa.gz` et `assignSpecies.fa.gz`) dans `data/16S/SILVA/`
 - Accès internet depuis les noeuds de calcul pour le téléchargement de SILVA et des images Singularity
 
 ---
