@@ -1,68 +1,73 @@
-# Pipeline Métagénomique 16S — *Tenebrio molitor*
+# 16S Metagenomic Pipeline — *Tenebrio molitor*
 
-Analyse bioinformatique des communautés bactériennes associées aux différents stades de développement de *Tenebrio molitor* par séquençage du 16S full-length et Shotgun.
-
----
-
-## Objectif
-
-Traiter des données de séquençage brutes pour aboutir à une quantification précise des taxons bactériens, en utilisant une approche **hybride d'assemblage de novo** ciblée sur le gène de l'ARNr 16S.
-
-Contrairement aux approches ASV standards, ce pipeline reconstruit des séquences 16S quasi-complètes (scaffolds) par assemblage de novo via MATAM, permettant une résolution taxonomique bien supérieure. Les abondances sont ensuite quantifiées de manière probabiliste par Salmon via l'algorithme Expectation-Maximization (EM), puis chaque séquence est assignée taxonomiquement jusqu'au rang de l'espèce via DADA2 et la base de référence SILVA.
-
-L'ensemble du pipeline est conçu pour s'exécuter sur un **cluster de calcul HPC** via le gestionnaire de tâches **SLURM**, avec parallélisation par job arrays.
+Bioinformatic analysis of bacterial communities associated with the different developmental stages of *Tenebrio molitor* using full-length 16S and Shotgun sequencing.
 
 ---
 
-## Outils et versions
+## Objective
 
-| Outil | Version | Méthode d'appel | Rôle |
+Process raw sequencing data to produce accurate bacterial taxon quantification, using a **hybrid de novo assembly approach** targeting the 16S rRNA gene.
+
+Unlike standard ASV-based approaches, this pipeline reconstructs near-complete 16S sequences (scaffolds) through de novo assembly with MATAM, enabling far superior taxonomic resolution. Abundances are then quantified probabilistically by Salmon using the Expectation-Maximization (EM) algorithm, and each sequence is assigned a taxonomy down to species level via DADA2 and the SILVA reference database. Finally, a comprehensive diversity analysis is performed in R to characterise microbial communities across developmental stages.
+
+The entire pipeline is designed to run on an **HPC computing cluster** via the **SLURM** job scheduler, with parallelisation through job arrays. The final statistical analysis step runs locally.
+
+---
+
+## Tools and versions
+
+| Tool | Version | Invocation method | Role |
 |---|---|---|---|
-| FastQC | 0.11.7 | Module SLURM | Contrôle qualité des lectures brutes (scores Phred, GC%, adaptateurs) |
-| MultiQC | 1.7 | Module SLURM | Agrégation des rapports FastQC en un tableau de bord HTML unique |
-| Python | 3.7.1 | Module SLURM | Nettoyage et parsing des lectures en flux continu |
-| GCC | 4.8.4 / 8.1.0 | Modules SLURM | Compilateur C/C++ (dépendances système) |
-| Singularity | cluster | Binaire système | Isolation et exécution des environnements MATAM et SortMeRNA |
-| SortMeRNA | 2.1b | Image Singularity (Biocontainers) | Indexation de la base de données de référence |
-| USEARCH | 9.2.64 | Module SLURM | Déréplication ultrarapide des séquences |
-| MATAM | 1.6.1 / 1.6.2* | Images Singularity | Assemblage de novo ciblé sur l'ARNr 16S |
-| Salmon | 1.10.2 | Conda 23.3.1 | Quantification par pseudo-alignement et algorithme EM |
-| R / DADA2 | — | Script R local | Assignation taxonomique (classifieur Bayésien + identité exacte) |
-| SILVA | v138.2 | Base de référence locale | Référence taxonomique pour l'assignation 16S |
+| FastQC | 0.11.7 | SLURM module | Quality control of raw reads (Phred scores, GC%, adapters) |
+| MultiQC | 1.7 | SLURM module | Aggregation of FastQC reports into a single interactive HTML dashboard |
+| Python | 3.7.1 | SLURM module | Read cleaning and streaming parsing |
+| GCC | 4.8.4 / 8.1.0 | SLURM modules | C/C++ compiler (system dependencies) |
+| Singularity | cluster | System binary | Isolation and execution of MATAM and SortMeRNA environments |
+| SortMeRNA | 2.1b | Singularity image (Biocontainers) | Reference database indexing |
+| USEARCH | 9.2.64 | SLURM module | Ultra-fast sequence dereplication |
+| MATAM | 1.6.1 / 1.6.2* | Singularity images | De novo assembly targeting 16S rRNA |
+| Salmon | 1.10.2 | Conda 23.3.1 | Quantification via pseudo-alignment and EM algorithm |
+| R / DADA2 | — | Local R script | Taxonomic assignment (Bayesian classifier + exact identity) |
+| R / ggplot2, vegan, etc. | — | Local R script | Alpha/beta diversity analysis and visualisation |
+| SILVA | v138.2 | Local reference database | Taxonomic reference for 16S assignment |
 
 ---
 
-## Architecture du projet
+## Project architecture
 
 ```
 16_tenebrion/
-├── bin/                        # Scripts de soumission SLURM
-│   ├── 16S_fastqc.slurm        # Étape 1 — Contrôle qualité initial
-│   ├── 16S_multiqc.slurm       # Étape 2 — Agrégation des rapports QC
-│   ├── pull_MATAM_sif.slurm    # Étape 3 — Installer MATAM en singularity
-│   ├── 16S_MATAM.slurm         # Étape 4 — Pipeline hybride de production
-│   └── assign_taxo_MATAM.R     # Étape 5 — Assignation taxonomique (DADA2/SILVA)
+├── bin/                        # SLURM submission scripts
+│   ├── 16S_fastqc.slurm        # Step 1 — Initial quality control
+│   ├── 16S_multiqc.slurm       # Step 2 — QC report aggregation
+│   ├── pull_MATAM_sif.slurm    # Step 3 — Install MATAM via Singularity
+│   ├── 16S_MATAM.slurm         # Step 4 — Hybrid production pipeline
+│   ├── assign_taxo_MATAM.R     # Step 5 — Taxonomic assignment (DADA2/SILVA)
+│   └── 16S_analysis.R          # Step 6 — Diversity analysis and visualisation
 │
-├── containers/                 # Images Singularity (.sif)
+├── containers/                 # Singularity images (.sif)
 ├── data/
-│   ├── raw/                    # Fichiers bruts (*_R1.fastq.gz, *_R2.fastq.gz)
+│   ├── raw/                    # Raw files (*_R1.fastq.gz, *_R2.fastq.gz)
 │   └── 16S/
-│       ├── MATAM/              # Table de séquences compilée (sortie Salmon)
-│       ├── SILVA/              # Bases de référence SILVA v138.2
-│       └── tax_info_sans_chimere.rds   # Dictionnaire taxonomique (sortie étape 5)
-├── log/                        # Fichiers de log SLURM (.out / .err)
-├── resources/                  # Environnements Conda
+│       ├── MATAM/              # Compiled sequence table (Salmon output)
+│       ├── SILVA/              # SILVA v138.2 reference databases
+│       ├── metadata.tsv        # Sample metadata (stage → condition)
+│       └── tax_info_sans_chimere.rds   # Taxonomic dictionary (Step 5 output)
+├── log/                        # SLURM log files (.out / .err)
+├── resources/                  # Conda environments
 └── results/
-    ├── qc/                     # Rapports FastQC et MultiQC
-    ├── PRODUCTION_HYBRID/      # Scaffolds MATAM + table d'abondance Salmon
-    └── all_matam_salmon_qiime_like_table_counts_wSpecies.tsv  # Table finale (sortie étape 5)
+    ├── qc/                     # FastQC and MultiQC reports
+    ├── PRODUCTION_HYBRID/      # MATAM scaffolds + Salmon abundance table
+    ├── 16S/
+    │   └── alpha_beta/         # Diversity plots (Step 6 output)
+    └── all_matam_salmon_qiime_like_table_counts_wSpecies.tsv  # Final table (Step 5 output)
 ```
 
 ---
 
-## Lancer le pipeline
+## Running the pipeline
 
-Les scripts doivent être soumis dans l'ordre suivant depuis la racine du projet :
+Scripts must be submitted in the following order from the project root:
 
 ```bash
 sbatch bin/16S_fastqc.slurm
@@ -70,132 +75,194 @@ sbatch bin/16S_multiqc.slurm
 sbatch bin/pull_MATAM_sif.slurm
 sbatch bin/16S_MATAM.slurm
 Rscript bin/assign_taxo_MATAM.R
+Rscript bin/16S_analysis.R
 ```
 
-Chaque étape doit être complétée avant de soumettre la suivante. Les étapes 1 et 4 s'exécutent en mode SLURM Array.
+Each step must be completed before submitting the next. Steps 1 and 4 run as SLURM Arrays. Step 6 runs locally (off-cluster).
 
 ---
 
-## Description des scripts
+## Script descriptions
 
 ---
 
-### Étape 1 — `16S_fastqc.slurm` : Contrôle qualité initial
+### Step 1 — `16S_fastqc.slurm`: Initial quality control
 
-**Objectif :** Évaluer la qualité intrinsèque des données de séquençage brutes avant tout traitement.
+**Objective:** Assess the intrinsic quality of raw sequencing data before any processing.
 
-Le script exploite les **SLURM Arrays** pour traiter chaque fichier `*_R1.fastq.gz` en parallèle. Il détecte automatiquement le nombre d'échantillons présents dans `data/raw/`. Les fichiers temporaires sont écrits dans un dossier dédié sur le `/storage/scratch` du cluster afin d'éviter les conflits d'écriture concurrents entre les tâches de l'array et de ne pas saturer les I/O du système de fichiers réseau principal.
-
----
-
-### Étape 2 — `16S_multiqc.slurm` : Agrégation du contrôle qualité
-
-**Objectif :** Centraliser l'interprétation qualité de l'ensemble du jeu de données en un seul rapport.
-
-MultiQC parse l'ensemble des rapports FastQC générés à l'étape précédente et produit un **rapport HTML interactif unique**. Ce rapport permet d'identifier visuellement en un seul coup d'œil les échantillons dont le comportement s'écarte de la norme (outliers), qui pourraient nécessiter un traitement particulier avant l'assemblage.
+The script leverages **SLURM Arrays** to process each `*_R1.fastq.gz` file in parallel. It automatically detects the number of samples present in `data/raw/`. Temporary files are written to a dedicated folder on the cluster's `/storage/scratch` to avoid concurrent write conflicts between array tasks and to prevent saturating the main network filesystem I/O.
 
 ---
 
-### Étape 3 — `pull_MATAM_sif.slurm` : Initialisation de l'environnement
+### Step 2 — `16S_multiqc.slurm`: Quality control aggregation
 
-**Objectif :** Préparer toute l'infrastructure logicielle requise par le pipeline d'assemblage hybride.
+**Objective:** Centralise the quality assessment of the entire dataset into a single report.
 
-Ce script réalise trois opérations successives :
-
-**Construction de l'image Singularity MATAM.** La conversion depuis une image Docker (Biocontainers) vers un fichier `.sif` encapsule l'intégralité des dépendances lourdes de MATAM (Python 2/3, assembleur SGA) sans polluer l'environnement hôte du cluster.
-
-**Téléchargement de la base SILVA SSURef NR95.** La récupération s'effectue via un mécanisme de fallback : plusieurs URLs sont testées successivement pour garantir le téléchargement même en cas d'indisponibilité d'un miroir.
-
-**Indexation adaptative.** L'indexation de la base de référence nécessite le binaire `indexdb_rna` de SortMeRNA. Le script vérifie d'abord si ce binaire est disponible dans l'image MATAM principale. Dans le cas contraire, il télécharge dynamiquement un conteneur SortMeRNA dédié pour exécuter cette opération.
+MultiQC parses all FastQC reports generated in the previous step and produces a **single interactive HTML report**. This report allows visual identification at a glance of samples whose behaviour deviates from the norm (outliers), which may require special treatment before assembly.
 
 ---
 
-### Étape 4 — `16S_MATAM.slurm` : Pipeline hybride de production
+### Step 3 — `pull_MATAM_sif.slurm`: Environment initialisation
 
-**Objectif :** Transformer les séquences brutes validées en une table d'abondance taxonomique. S'exécute en mode SLURM Array, un job par échantillon.
+**Objective:** Prepare the entire software infrastructure required by the hybrid assembly pipeline.
 
-Le script enchaîne quatre sous-étapes :
+This script performs three successive operations:
 
-**Nettoyage strict (Python).** Un script Python implémenté à la volée lit les séquences en flux continu (*streaming*), sans chargement intégral en mémoire — stratégie adaptée aux gros volumes. Les 15 premiers nucléotides de chaque lecture sont retirés (région souvent bruitée par les amorces), et les séquences trop courtes sont éliminées.
+**Building the MATAM Singularity image.** Conversion from a Docker image (Biocontainers) to a `.sif` file encapsulates all of MATAM's heavy dependencies (Python 2/3, SGA assembler) without polluting the cluster host environment.
 
-**Déréplication (USEARCH).** Les lectures strictement identiques sont fusionnées en entités uniques. Cette étape agit comme une forte compression de l'information et réduit considérablement l'espace de recherche et la complexité temporelle pour l'assembleur qui suit.
+**Downloading the SILVA SSURef NR95 database.** Retrieval uses a fallback mechanism: multiple URLs are tested in succession to guarantee the download even if a mirror is unavailable.
 
-**Assemblage de novo (MATAM).** Contrairement aux approches ASV standards, MATAM utilise les short-reads et la base SILVA pour reconstruire des séquences d'ARNr 16S quasi-complètes (scaffolds). Cette reconstruction permet d'atteindre une résolution taxonomique bien plus fine.
-
-**Quantification probabiliste (Salmon).** Une fois le catalogue de séquences 16S assemblé, Salmon l'indexe et aligne virtuellement les lectures initiales dessus. L'algorithme **Expectation-Maximization (EM)** résout l'ambiguïté des reads s'alignant avec une probabilité équivalente sur plusieurs taxons proches, produisant une table d'abondance finale robuste.
+**Adaptive indexing.** Indexing the reference database requires the `indexdb_rna` binary from SortMeRNA. The script first checks whether this binary is available in the main MATAM image. If not, it dynamically downloads a dedicated SortMeRNA container to run this operation.
 
 ---
 
-### Étape 5 — `assign_taxo_MATAM.R` : Assignation taxonomique
+### Step 4 — `16S_MATAM.slurm`: Hybrid production pipeline
 
-**Objectif :** Assigner une taxonomie complète (jusqu'au rang de l'espèce) à chaque séquence assemblée par MATAM, et produire une table d'abondance au format standard QIIME2.
+**Objective:** Transform validated raw sequences into a taxonomic abundance table. Runs as a SLURM Array, one job per sample.
 
-Le script prend en entrée la table de séquences compilée produite par Salmon (`all_matam_sequences_compiled.tsv`) et enchaîne cinq sous-étapes :
+The script chains four sub-steps:
 
-**Déduplication des séquences.** Seules les séquences uniques sont extraites avant l'assignation, afin d'éviter de classifier plusieurs fois la même séquence présente dans plusieurs échantillons. Le tableau complet est conservé pour la jointure finale.
+**Strict cleaning (Python).** An on-the-fly Python script reads sequences as a continuous stream (*streaming*), without loading the entire file into memory — a strategy suited to large volumes. The first 15 nucleotides of each read are trimmed (a region often noisy due to primers), and sequences that are too short are discarded.
 
-**Assignation au Genre (classifieur Bayésien, `assignTaxonomy`).** Le classifieur Bayésien naïf de DADA2 (Wang et al. 2007) est appliqué contre la base SILVA v138.2, avec un seuil de bootstrap minimal de 80 %. Les rangs en dessous de ce seuil restent `NA` plutôt que de forcer une assignation incertaine. La parallélisation interne de DADA2 (OpenMP) est activée.
+**Dereplication (USEARCH).** Strictly identical reads are merged into unique entities. This step acts as a strong information compression and considerably reduces the search space and time complexity for the downstream assembler.
 
-**Assignation à l'Espèce (`addSpecies`, parallélisée manuellement).** `addSpecies()` recherche une correspondance à 100 % d'identité dans la base SILVA. Cette opération étant séquentielle par nature, elle est parallélisée manuellement par paquets de 2 000 séquences via `mclapply()`, en réservant 3 cœurs pour la stabilité du système.
+**De novo assembly (MATAM).** Unlike standard ASV approaches, MATAM uses short reads and the SILVA database to reconstruct near-complete 16S rRNA sequences (scaffolds). This reconstruction achieves much finer taxonomic resolution.
 
-**Filtrage biologique minimal.** Seules les séquences sans assignation au rang du Règne (`Kingdom = NA`) sont supprimées — elles correspondent très probablement à des chimères ou artéfacts. Les rangs inférieurs non résolus (`NA`) sont conservés car ils représentent une information biologique valide.
-
-**Double export.** Le script produit deux fichiers :
-- `tax_info_sans_chimere.rds` : dictionnaire séquence → taxonomie complète, au format RDS (pour PICRUSt2).
-- `all_matam_salmon_qiime_like_table_counts_wSpecies.tsv` : table d'abondance pivotée (lignes = taxons au format `d__`;`p__`;...;`s__`, colonnes = échantillons), conforme à la convention QIIME2/BIOM.
+**Probabilistic quantification (Salmon).** Once the 16S sequence catalogue is assembled, Salmon indexes it and virtually aligns the original reads against it. The **Expectation-Maximization (EM)** algorithm resolves the ambiguity of reads mapping with equivalent probability to multiple closely related taxa, producing a robust final abundance table.
 
 ---
 
-## Schéma du pipeline
+### Step 5 — `assign_taxo_MATAM.R`: Taxonomic assignment
+
+**Objective:** Assign a complete taxonomy (down to species level) to each sequence assembled by MATAM, and produce an abundance table in standard QIIME2 format.
+
+The script takes as input the compiled sequence table produced by Salmon (`all_matam_sequences_compiled.tsv`) and chains five sub-steps:
+
+**Sequence deduplication.** Only unique sequences are extracted before assignment, to avoid classifying the same sequence multiple times when it appears in several samples. The full table is retained for the final join.
+
+**Genus assignment (Bayesian classifier, `assignTaxonomy`).** The DADA2 naïve Bayesian classifier (Wang et al. 2007) is applied against the SILVA v138.2 database with a minimum bootstrap threshold of 80 %. Ranks below this threshold remain `NA` rather than forcing an uncertain assignment. DADA2's internal parallelisation (OpenMP) is enabled.
+
+**Species assignment (`addSpecies`, manually parallelised).** `addSpecies()` searches for 100 % identity matches in the SILVA database. As this operation is inherently sequential, it is manually parallelised in chunks of 2,000 sequences via `mclapply()`, reserving 3 cores for system stability.
+
+**Minimal biological filtering.** Only sequences with no assignment at the Kingdom rank (`Kingdom = NA`) are removed — these most likely correspond to chimeras or artefacts. Unresolved lower ranks (`NA`) are retained as they represent valid biological information.
+
+**Dual export.** The script produces two files:
+- `tax_info_sans_chimere.rds`: sequence → complete taxonomy dictionary, in RDS format (for PICRUSt2).
+- `all_matam_salmon_qiime_like_table_counts_wSpecies.tsv`: pivoted abundance table (rows = taxa in `d__`;`p__`;...;`s__` format, columns = samples), compliant with the QIIME2/BIOM convention.
+
+---
+
+### Step 6 — `16S_analysis.R`: Diversity analysis and visualisation
+
+**Objective:** Characterise the gut microbial communities of *T. molitor* across developmental stages (larvae → adults) and produce the full set of analysis figures.
+
+The script takes as input the QIIME2-like table produced at Step 5 and a metadata file (`data/16S/metadata.tsv`), and runs through 16 analysis blocks:
+
+**Data loading and harmonisation (Blocks 1–2).** The count file is read robustly (handling the `#OTU ID` header specific to QIIME2 format). Taxonomic ranks are extracted by regex from SILVA strings (`d__`, `p__`, ..., `s__`). A taxonomic revision dictionary (`harmoniser_taxonomie()`) corrects genera reclassified in SILVA 138 (splits of *Lactobacillus*, *Bacillus*, *Mycobacterium*, *Burkholderia*, etc.) to ensure cross-sample consistency. Plastids (chloroplasts, mitochondria) are filtered out. Binomial nomenclature is standardised.
+
+**Alpha and beta diversity (Blocks 3–4).** The Shannon index is computed per sample on 100 %-normalised counts. Bray-Curtis dissimilarity is calculated via the `vegan` library (sample × sample matrix) to measure community divergence between replicates within each stage. Both metrics are displayed jointly on time-course curves following the developmental chronology.
+
+**Taxonomic compositions (Blocks 5–8).** Stacked barplots at Genus and Species level are generated for larval stages, adult stages, and the full dataset (insect + environmental substrates). Rare taxa are grouped into an "Others" category to keep figures readable.
+
+**Similarity matrices (Block 9).** Bray-Curtis heatmaps are produced for all replicates (insect + substrate) and for the insect-only subset, enabling visual identification of stage-level clustering.
+
+**Master figures (Blocks 10–11).** Alpha/beta curves and barplots are combined via `patchwork` into multi-panel publication-ready figures, for both the insect-only and the full dataset including substrates.
+
+**Core microbiome (Blocks 12–15).** For larvae and adults, the core microbiome is characterised at two taxonomic ranks (Genus and Species) using two complementary approaches: mean abundance barplots per stage, and Prevalence/Abundance quadrant plots (ecological classification into *Strict core*, *Satellite*, *Transient* and *Background noise*). Donut charts summarise adult core composition.
+
+**Alpha/beta correlation (Block 15 bis).** A Spearman test evaluates the relationship between intra-group heterogeneity (mean Bray-Curtis distance) and individual alpha diversity (Shannon), with stage centroids and individual replicates represented.
+
+**Intra-genus taxonomic resolution (Block 16).** For the most abundant genera in larval and adult stages, fragmented horizontal barplots show the intra-genus breakdown into species, enabling assessment of the taxonomic resolution achieved by MATAM/SILVA.
+
+**Output figures** (saved to `results/16S/alpha_beta/`):
+
+| File | Content |
+|---|---|
+| `Valeurs_Shannon_BrayCurtis.tsv` | Raw numerical table of alpha/beta indices |
+| `shannon_vs_braycurtis_.png` | Alpha/beta curves (insect only) |
+| `shannon_vs_braycurtis_substrats.png` | Alpha/beta curves (insect + substrates) |
+| `Barplot_Global_16S.png` | Taxonomic composition per replicate (all stages) |
+| `Matrice_BrayCurtis_Tous_Replicats.png` | Bray-Curtis heatmap (all replicates) |
+| `Matrice_BrayCurtis_Insecte_Seul.png` | Bray-Curtis heatmap (insect only) |
+| `Master_Figure.png` / `_substrats.png` | Multi-panel master figures |
+| `Core_Larval_Microbiome_Means.png` | Mean larval core microbiome (Genus) |
+| `Core_Larval_Microbiome_Means_Species.png` | Mean larval core microbiome (Species) |
+| `Core_Microbiome_Quadrants.png` | Prevalence/Abundance quadrants, larvae (Genus) |
+| `Core_Microbiome_Quadrants_Species.png` | Prevalence/Abundance quadrants, larvae (Species) |
+| `Core_genome_heterogeneous.png` | Intra-stage fidelity matrices |
+| `Core_Adult_Microbiome_Means.png` | Mean adult core microbiome (Genus) |
+| `Core_Adult_Microbiome_Donut.png` | Adult donut chart (Genus) |
+| `Core_Adult_Microbiome_Means_Species.png` | Mean adult core microbiome (Species) |
+| `Core_Adult_Microbiome_Donut_Species.png` | Adult donut chart (Species) |
+| `Core_Adult_Microbiome_Quadrants.png` | Prevalence/Abundance quadrants, adults (Genus) |
+| `Core_Adult_Microbiome_Quadrants_Species.png` | Prevalence/Abundance quadrants, adults (Species) |
+| `PCA_microbiote.png` | PCA of community structures |
+| `Correlation_Bray_vs_Shannon.png` / `.svg` | Alpha vs beta correlation (Spearman) |
+| `Taxonomic_Resolution_Average_Larvae.png` | Intra-genus resolution, larvae (top 10 genera) |
+| `Taxonomic_Resolution_Adults.png` | Intra-genus resolution, adults (top 10 genera) |
+
+---
+
+## Pipeline diagram
 
 ```
-Données brutes (FASTQ)
+Raw data (FASTQ)
         |
         v
-[1] FastQC              Contrôle qualité par échantillon (SLURM Array)
+[1] FastQC              Per-sample quality control (SLURM Array)
         |
         v
-[2] MultiQC             Rapport QC agrégé (HTML interactif)
+[2] MultiQC             Aggregated QC report (interactive HTML)
         |
         v
-[3] pull_MATAM_sif      Image Singularity MATAM + base SILVA indexée
+[3] pull_MATAM_sif      MATAM Singularity image + indexed SILVA database
         |
         v
-[4a] Nettoyage          Clipping amorces + filtrage longueur (Python streaming)
+[4a] Cleaning           Primer clipping + length filtering (Python streaming)
         |
         v
-[4b] Déréplication      Compression des lectures identiques (USEARCH)
+[4b] Dereplication      Compression of identical reads (USEARCH)
         |
         v
-[4c] Assemblage         Reconstruction de scaffolds 16S quasi-complets (MATAM)
+[4c] Assembly           Reconstruction of near-complete 16S scaffolds (MATAM)
         |
         v
-[4d] Quantification     Table d'abondance par séquence (Salmon + EM)
+[4d] Quantification     Per-sequence abundance table (Salmon + EM)
         |
         v
-[5a] Assignation Genre  Classifieur Bayésien DADA2 × SILVA v138.2 (minBoot=80)
+[5a] Genus assignment   DADA2 Bayesian classifier × SILVA v138.2 (minBoot=80)
         |
         v
-[5b] Assignation Espèce addSpecies() identité 100% × SILVA (mclapply, chunks 2000)
+[5b] Species assignment addSpecies() 100% identity × SILVA (mclapply, chunks 2000)
         |
         v
-[5c] Export             Dictionnaire .rds + Table QIIME2 .tsv
+[5c] Export             .rds dictionary + QIIME2 .tsv table
+        |
+        v
+[6a] Harmonisation      Taxonomic corrections + plastid filtering
+        |
+        v
+[6b] α/β Diversity      Shannon per sample + Bray-Curtis between replicates
+        |
+        v
+[6c] Visualisation      Barplots, heatmaps, quadrants, PCA, correlations (22 figures)
 ```
 
 ---
 
-## Prérequis
+## Prerequisites
 
-- Cluster HPC avec gestionnaire de tâches **SLURM**
-- **Singularity / Apptainer** disponible en tant que binaire système
-- Modules disponibles sur le cluster : `fastqc/0.11.7`, `MultiQC/1.7`, `python/3.7.1`, `gcc/4.8.4`, `gcc/8.1.0`, `usearch/9.2.64`
-- Environnement **Conda** (version 23.3.1) incluant Salmon 1.10.2
-- **R** avec les packages : `dada2`, `dplyr`, `tidyr`, `readr`, `parallel`
-- Bases de référence SILVA v138.2 (`toGenus_trainset.fa.gz` et `assignSpecies.fa.gz`) dans `data/16S/SILVA/`
-- Accès internet depuis les noeuds de calcul pour le téléchargement de SILVA et des images Singularity
+- HPC cluster with **SLURM** job scheduler
+- **Singularity / Apptainer** available as a system binary
+- Modules available on the cluster: `fastqc/0.11.7`, `MultiQC/1.7`, `python/3.7.1`, `gcc/4.8.4`, `gcc/8.1.0`, `usearch/9.2.64`
+- **Conda** environment (version 23.3.1) including Salmon 1.10.2
+- **R** with packages: `dada2`, `dplyr`, `tidyr`, `readr`, `parallel` (Step 5) and `ggplot2`, `vegan`, `tibble`, `stringr`, `forcats`, `colorspace`, `patchwork`, `ggrepel`, `scales` (Step 6)
+- SILVA v138.2 reference databases (`toGenus_trainset.fa.gz` and `assignSpecies.fa.gz`) in `data/16S/SILVA/`
+- Metadata file (`data/16S/metadata.tsv`) with columns `sample-id` and `condition`
+- Internet access from compute nodes for downloading SILVA and Singularity images
 
 ---
 
-## Auteur
+## Author
 
-Thomas BOUTET — Projet Ténébrion, analyse métagénomique 16S de *Tenebrio molitor*
+Thomas BOUTET — Ténébrion Project, 16S metagenomic analysis of *Tenebrio molitor*
