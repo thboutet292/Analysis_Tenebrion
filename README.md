@@ -265,4 +265,4 @@ Raw data (FASTQ)
 
 ## Author
 
-Thomas BOUTET — Ténébrion Project, 16S metagenomic analysis of *Tenebrio molitor*
+Thomas BOUTET — Tenebrion Project, 16S metagenomic analysis of *Tenebrio molitor*
