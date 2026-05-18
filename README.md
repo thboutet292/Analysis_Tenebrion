@@ -122,7 +122,7 @@ This script performs three successive operations:
 
 The script chains four sub-steps:
 
-**Strict cleaning (Python).** An on-the-fly Python script reads sequences as a continuous stream (*streaming*), without loading the entire file into memory — a strategy suited to large volumes. The first 15 nucleotides of each read are trimmed (a region often noisy due to primers), and sequences that are too short are discarded.
+**Strict cleaning (Python).** An on-the-fly Python script reads sequences as a continuous stream (*streaming*), without loading the entire file into memory — a strategy suited to large volumes. The first 15 nucleotides of each read are trimmed (a region often noisy due to primers), and sequences that are too short are discarded (>50 nt).
 
 **Dereplication (USEARCH).** Strictly identical reads are merged into unique entities. This step acts as a strong information compression and considerably reduces the search space and time complexity for the downstream assembler.
 
