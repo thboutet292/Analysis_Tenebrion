@@ -5,30 +5,53 @@
 # Ce script analyse les communautés bactériennes intestinales de T. molitor
 # à travers les différents stades de développement (larves → adultes + substrat)
 #
-# GRAPHIQUES PRODUITS :
+# FICHIERS PRODUITS (dans results/16S/alpha_beta/) :
 #
-#  1. Valeurs_Shannon_BrayCurtis.tsv    → Tableau numérique brut (annexe)
-#  2. shannon_vs_braycurtis_.png        → Courbes alpha/bêta (insecte seul)
-#  3. shannon_vs_braycurtis_substrats.png → Courbes alpha/bêta (+ environnement)
-#  4. Barplot_Global_16S.png            → Composition par réplicat (tous stades)
-#  5. Matrice_BrayCurtis_Tous_Replicats.png → Heatmap similarité (tous)
-#  6. Matrice_BrayCurtis_Insecte_Seul.png   → Heatmap similarité (insecte)
-#  7. Master_Figure.png / _substrats.png    → Figure maîtresse combinée
-#  8. Core_Larval_Microbiome_Means.png      → Core larvaire (Genre)
-#  9. Core_Larval_Microbiome_Means_Species.png → Core larvaire (Espèce)
-# 10. Core_Microbiome_Quadrants.png         → Quadrants Prévalence/Abondance (larves, Genre)
-# 11. Core_Microbiome_Quadrants_Species.png → Quadrants (larves, Espèce)
-# 12. Core_genome_heterogeneous.png         → Matrices de fidélité intra-stade
-# 13. Core_Adult_Microbiome_Means.png       → Core adulte (Genre)
-# 14. Core_Adult_Microbiome_Donut.png       → Donut adulte (Genre)
-# 15. Core_Adult_Microbiome_Means_Species.png → Core adulte (Espèce)
-# 16. Core_Adult_Microbiome_Donut_Species.png → Donut adulte (Espèce)
-# 17. Core_Adult_Microbiome_Quadrants.png   → Quadrants adultes (Genre)
-# 18. Core_Adult_Microbiome_Quadrants_Species.png → Quadrants adultes (Espèce)
-# 19. PCA_microbiote.png                    → ACP (structure des communautés)
-# 20. Correlation_Bray_vs_Shannon.png/.svg  → Corrélation alpha vs bêta
-# 21. Taxonomic_Resolution_Average_Larvae.png → Résolution intra-genre (larves)
-# 22. Taxonomic_Resolution_Adults.png         → Résolution intra-genre (adultes)
+# --- Diversité Alpha / Bêta ---
+#  1. Valeurs_Shannon_BrayCurtis.tsv                  → Tableau numérique brut (annexe)
+#  2. shannon_vs_braycurtis.png / .svg                → Courbes alpha/bêta (insecte seul)
+#
+# --- Composition globale ---
+#  3. Barplot_Global_16S.png / .svg                   → Composition par réplicat (insecte seul)
+#  4. Matrice_BrayCurtis_Tous_Replicats.png           → Heatmap dissimilarité (tous réplicats)
+#  5. Matrice_BrayCurtis_Insecte_Seul.png             → Heatmap dissimilarité (insecte seul)
+#
+# --- Figure maîtresse ---
+#  6. Master_Figure_substrats.png / .svg              → Figure combinée (insecte + environnement)
+#  7. Master_Figure.png / .svg                        → Figure combinée (insecte seul)
+#
+# --- Core microbiote larvaire ---
+#  8. Larval_Microbiome_Means.png                     → Barplot core larvaire (Genre)
+#  9. Larval_Microbiome_Means_Species.png             → Barplot core larvaire (Espèce)
+# 10. Larval_Microbiome_Quadrants.png                 → Quadrants Prévalence/Abondance (Genre)
+# 11. Larval_Microbiome_Quadrants_Species.png         → Quadrants Prévalence/Abondance (Espèce)
+# 12. Genome_heterogeneous.png                        → Matrices fidélité intra-stade
+#
+# --- Core microbiote adulte ---
+# 13. Adult_Microbiome_Means.png                      → Barplot adulte (Genre)
+# 14. Adult_Microbiome_Donut.png                      → Donut adulte (Genre)
+# 15. Adult_Microbiome_Means_Species.png              → Barplot adulte (Espèce)
+# 16. Adult_Microbiome_Donut_Species.png              → Donut adulte (Espèce)
+# 17. Adult_Microbiome_Quadrants.png                  → Quadrants adultes (Genre)
+# 18. Adult_Microbiome_Quadrants_Species.png          → Quadrants adultes (Espèce)
+#
+# --- Structure des communautés ---
+# 19. PCA_microbiote_insecte_seul.png                 → ACP sans ellipses (insecte seul)
+# 20. PCA_microbiote_insecte_seul_ellipses.png        → ACP avec ellipses 95% (insecte seul)
+# 21. Correlation_Bray_vs_Shannon.png / .svg          → Corrélation alpha vs bêta
+#
+# --- Résolution taxonomique intra-genre ---
+# 22. Taxonomic_Resolution_Average_Larvae.png         → Résolution espèce (larves groupées)
+# 23. Taxonomic_Resolution_Microlarvae.png            → Résolution espèce (Microlarvae 7 mg)
+# 24. Taxonomic_Resolution_Larvae_S1.png              → Résolution espèce (Larvae S1 14 mg)
+# 25. Taxonomic_Resolution_Larvae_S2.png              → Résolution espèce (Larvae S2 40 mg)
+# 26. Taxonomic_Resolution_Larvae_S3.png              → Résolution espèce (Larvae S3 65 mg)
+# 27. Taxonomic_Resolution_Larvae_S4.png              → Résolution espèce (Larvae S4 100 mg)
+# 28. Taxonomic_Resolution_Adults.png                 → Résolution espèce (adultes)
+#
+# --- Dendrogrammes ---
+# 29. Dendrogramme_Global_Epure.png                   → Clustering hiérarchique (tous échantillons)
+# 30. Dendrogramme_Insecte_Epure.png                  → Clustering hiérarchique (insecte seul)
 #
 # DONNÉES REQUISES :
 #   - Table QIIME2-like (séquences × échantillons, format TSV)
@@ -822,7 +845,7 @@ creer_graphique_double_axe <- function(df_data, coeff, chronologie_labels,
     labs(title = titre, x = titre_x, color = NULL) +
     theme_bw(base_size = 13) +
     theme(
-      axis.text.x        = element_text(angle = 35, hjust = 1, face = "bold"),
+      axis.text.x        = element_text(angle = 50, hjust = 1, face = "bold"),
       axis.title.y.left  = element_text(color = COL_SHANNON, face = "bold"),
       axis.title.y.right = element_text(color = COL_BRAY, face = "bold"),
       legend.position    = "bottom",
@@ -842,11 +865,16 @@ p_dyn_sans <- creer_graphique_double_axe(
   chronologie_labels = chronologie_insecte,
   rho    = rho_sans,
   p_val  = p_val_sans,
-  titre  = "Dynamique du Microbiote",
-  titre_x = "Stades de développement"
+  titre  = "Alpha vs Beta diversity ",
+  titre_x = "Stages of development"
 )
-ggsave(file.path(out_dir, "shannon_vs_braycurtis_.png"),
+ggsave(file.path(out_dir, "shannon_vs_braycurtis.png"),
        plot = p_dyn_sans, width = 12, height = 8, dpi = 300)
+
+ggsave(filename = file.path(out_dir, "shannon_vs_braycurtis.svg"),
+       plot = p_dyn_sans, 
+       width = 18, 
+       height = 8)
 
 # --- Graphique 2 : Insecte + Substrats (avec facettes) ---
 coeff_avec <- max(df_final$MeanShannon, na.rm = TRUE) / max(df_final$Beta_Mean, na.rm = TRUE)
@@ -868,30 +896,35 @@ p_dyn_avec <- creer_graphique_double_axe(
     strip.background = element_rect(fill = "grey30", color = "black")
   )
 
-ggsave(file.path(out_dir, "shannon_vs_braycurtis_substrats.png"),
-       plot = p_dyn_avec, width = 12, height = 8, dpi = 300)
+#ggsave(file.path(out_dir, "shannon_vs_braycurtis_substrats.png"),
+#       plot = p_dyn_avec, width = 12, height = 8, dpi = 300)
 
 
 # ==============================================================================
-# BLOC 6 : BARPLOT GLOBAL 16S — COMPOSITION PAR RÉPLICAT (NIVEAU GENRE)
+# BLOC 6 : GLOBAL 16S BARPLOT — REPLICATE COMPOSITION (GENUS LEVEL)
 # ==============================================================================
-# Ce graphique montre la composition en genres bactériens de CHAQUE réplicat,
-# organisée par condition. Il permet d'évaluer la reproductibilité entre
-# réplicats et de voir l'évolution de la communauté à travers le développement.
-message("--- Barplot Global 16S ---")
+# This chart displays the bacterial genus composition of EACH replicate,
+# organized by development stage. It allows evaluating reproducibility between
+# replicates and community evolution across development.
+message("--- Global 16S Barplot ---")
 
-ordre_chronologique <- chronologie_tout  # Alias pour la cohérence des noms
+# Define chronological order excluding substrates
+ordre_chronologique <- c(
+  "Tiny_Larvae (2 mg)", "Microlarvae (7 mg)",
+  "Larvae_S1 (14 mg)", "Larvae_S2 (40 mg)", "Larvae_S3 (65 mg)", "Larvae_S4 (100 mg)",
+  "Pupae", "Young_Beetles", "Beetles"
+)
 
-# Normalisation à 100% sur l'ensemble du jeu de données
+# Normalize data and filter out substrates immediately
 df_global_norm <- normaliser_100(df_final_16s, "Genus") %>%
   left_join(meta %>% select(Sample, Condition), by = "Sample") %>%
   filter(!is.na(Condition)) %>%
+  filter(Condition %in% ordre_chronologique) %>% # Exclude substrates
   mutate(Condition = factor(Condition, levels = ordre_chronologique))
 
-# Identification du Top 14 des genres les plus abondants globalement.
-# Certains genres écologiquement non pertinents pour T. molitor sont exclus.
+# Identify Top 14 genera globally
 top_global <- df_global_norm %>%
-  filter(!(Genus %in% c("Unassigned", "Bacteroides", "Alistipes",
+  filter(!(Genus %in% c("Unassigned", "Bacteroides", "Alistipes", 
                          "Aquabacterium", "Blastococcus"))) %>%
   group_by(Genus) %>%
   summarise(MeanAbund = mean(Relative_Abundance), .groups = "drop") %>%
@@ -913,7 +946,7 @@ df_plot_global <- df_global_norm %>%
     )
   )
 
-# Palette du barplot global
+# Color palette
 levels_taxa_global <- levels(df_plot_global$Taxon_Top)
 taxa_vrais_global  <- setdiff(levels_taxa_global, c("Others", "Unassigned"))
 my_col_global <- setNames(rep_len(pal_taxo, length(taxa_vrais_global)), taxa_vrais_global)
@@ -928,14 +961,12 @@ p_global <- ggplot(df_plot_global, aes(x = Sample, y = Abundance, fill = Taxon_T
     labels = function(x) paste0(x, "%"),
     expand = expansion(mult = c(0, 0.02))
   ) +
-  # facet_grid crée un panneau par condition
-  # scales = "free_x" + space = "free_x" : chaque panneau a sa propre largeur
-  # proportionnelle au nombre de réplicats (évite des barres de largeurs inégales)
   facet_grid(~ Condition, scales = "free_x", space = "free_x") +
   labs(
-    title = "Catalogue Global du Microbiote Intestinal (16S)",
-    x = "Réplicats Biologiques", y = "Abondance Relative (%)",
-    fill = "Genre Bactérien"
+    title = "Global Microbiota Composition (16S)",
+    x = "Biological Replicates", 
+    y = "Relative Abundance (%)",
+    fill = "Bacterial Genus"
   ) +
   theme_bw(base_size = 12) +
   theme(
@@ -953,6 +984,10 @@ p_global <- ggplot(df_plot_global, aes(x = Sample, y = Abundance, fill = Taxon_T
 ggsave(filename = file.path(out_dir, "Barplot_Global_16S.png"),
        plot = p_global, width = 18, height = 8, dpi = 300)
 
+ggsave(filename = file.path(out_dir, "Barplot_Global_16S.svg"),
+       plot = p_global, 
+       width = 18, 
+       height = 8)
 
 # ==============================================================================
 # BLOC 7 : HEATMAP DE DISSIMILARITÉ BRAY-CURTIS (TOUS RÉPLICATS)
@@ -1277,11 +1312,11 @@ res_larves_gen <- preparer_barplot_data(
 )
 p_core <- creer_barplot(
   res_larves_gen$df_plot, res_larves_gen$palette,
-  titre    = "Core Larval Microbiome (16S)",
+  titre    = "Larval Microbiome (16S)",
   x_lab    = "Larval Stages",
   fill_lab = "Bacterial Genus:"
 )
-ggsave(file.path(out_dir, "Core_Larval_Microbiome_Means.png"),
+ggsave(file.path(out_dir, "Larval_Microbiome_Means.png"),
        plot = p_core, width = 9, height = 7, dpi = 300)
 
 # --- Partie B : Niveau Espèce ---
@@ -1292,13 +1327,13 @@ res_larves_sp <- preparer_barplot_data(
 )
 p_core_sp <- creer_barplot(
   res_larves_sp$df_plot, res_larves_sp$palette,
-  titre    = "Core Larval Microbiome (16S - Species level)",
+  titre    = "Larval Microbiome (16S - Species level)",
   x_lab    = "Larval Stages",
   fill_lab = "Bacterial Species:"
 )
-ggsave(file.path(out_dir, "Core_Larval_Microbiome_Means_Species.png"),
+ggsave(file.path(out_dir, "Larval_Microbiome_Means_Species.png"),
        plot = p_core_sp, width = 9.5, height = 7, dpi = 300)
-message("=> Core Larval Microbiome barplots générés.")
+message("=> Larval Microbiome barplots générés.")
 
 
 # ==============================================================================
@@ -1323,9 +1358,9 @@ df_core_scatter_gen <- calculer_core_scatter(
 )
 p_scatter_gen <- creer_quadrant_plot(
   df_core_scatter_gen, "Genus", SEUIL_PREVALENCE, SEUIL_ABONDANCE,
-  titre = "Larval Core Microbiome Structure (16S - Genus level)"
+  titre = "Larval Microbiome Structure (16S - Genus level)"
 )
-ggsave(file.path(out_dir, "Core_Microbiome_Quadrants.png"),
+ggsave(file.path(out_dir, "Larval_Microbiome_Quadrants.png"),
        plot = p_scatter_gen, width = 11, height = 8, dpi = 300)
 
 # --- Espèce ---
@@ -1343,7 +1378,7 @@ p_scatter_sp <- creer_quadrant_plot(
   titre = "Larval Microbiome Structure (16S - Species level)",
   style_label = "italic"
 )
-ggsave(file.path(out_dir, "Core_Microbiome_Quadrants_Species.png"),
+ggsave(file.path(out_dir, "Larval_Microbiome_Quadrants_Species.png"),
        plot = p_scatter_sp, width = 11, height = 8, dpi = 300)
 
 
@@ -1437,7 +1472,7 @@ if (length(plot_list) > 0) {
     theme(legend.position = "bottom", legend.key.width = unit(2, "cm"))
 
   final_h <- max(7, sum(genus_counts) * 0.35 + 2.5)
-  ggsave(filename = file.path(out_dir, "Core_genome_heterogeneous.png"),
+  ggsave(filename = file.path(out_dir, "Genome_heterogeneous.png"),
          plot = p_combined, width = 9.5, height = final_h, dpi = 300, bg = "white")
 }
 
@@ -1495,18 +1530,18 @@ res_adulte_gen <- preparer_barplot_data(
 )
 p_core_adulte <- creer_barplot(
   res_adulte_gen$df_plot, res_adulte_gen$palette,
-  titre = "Core Adult Microbiome (16S)", x_lab = NULL,
+  titre = "Adult Microbiome (16S)", x_lab = NULL,
   fill_lab = "Bacterial Genus:", angle_x = 0, largeur_bar = 0.45
 ) +
   theme(axis.text.x = element_text(angle = 0, face = "bold", size = 12))
 
 p_donut_adulte <- creer_donut(
   res_adulte_gen$df_plot, res_adulte_gen$palette,
-  titre = "Adult Stage Identity Card (16S)"
+  titre = "Adult Stage Microbiote Diversity  (16S)"
 )
-ggsave(file.path(out_dir, "Core_Adult_Microbiome_Means.png"),
+ggsave(file.path(out_dir, "Adult_Microbiome_Means.png"),
        plot = p_core_adulte, width = 6.5, height = 7, dpi = 300)
-ggsave(file.path(out_dir, "Core_Adult_Microbiome_Donut.png"),
+ggsave(file.path(out_dir, "Adult_Microbiome_Donut.png"),
        plot = p_donut_adulte, width = 9.5, height = 7, dpi = 300)
 
 # --- Partie Espèce ---
@@ -1517,18 +1552,18 @@ res_adulte_sp <- preparer_barplot_data(
 )
 p_core_adulte_sp <- creer_barplot(
   res_adulte_sp$df_plot, res_adulte_sp$palette,
-  titre = "Core Adult Microbiome (16S — Species level)", x_lab = NULL,
+  titre = "Adult Microbiome (16S — Species level)", x_lab = NULL,
   fill_lab = "Bacterial Species:", angle_x = 0, largeur_bar = 0.45
 ) +
   theme(axis.text.x = element_text(angle = 0, face = "bold", size = 12))
 
 p_donut_adulte_sp <- creer_donut(
   res_adulte_sp$df_plot, res_adulte_sp$palette,
-  titre = "Adult Stage Identity Card (16S — Species level)"
+  titre = "Adult Stage Microbiote Diversity (16S — Species level)"
 )
-ggsave(file.path(out_dir, "Core_Adult_Microbiome_Means_Species.png"),
+ggsave(file.path(out_dir, "Adult_Microbiome_Means_Species.png"),
        plot = p_core_adulte_sp, width = 7.5, height = 7, dpi = 300)
-ggsave(file.path(out_dir, "Core_Adult_Microbiome_Donut_Species.png"),
+ggsave(file.path(out_dir, "Adult_Microbiome_Donut_Species.png"),
        plot = p_donut_adulte_sp, width = 10.5, height = 7, dpi = 300)
 
 
@@ -1553,9 +1588,9 @@ df_core_ad_gen <- calculer_core_scatter(
 )
 p_scatter_ad <- creer_quadrant_plot(
   df_core_ad_gen, "Genus", SEUIL_PREVALENCE_AD, SEUIL_ABONDANCE_AD,
-  titre = "Adult Core Microbiome Structure (Beetles - Genus level)"
+  titre = "Adult Microbiome Structure (Beetles - Genus level)"
 )
-ggsave(file.path(out_dir, "Core_Adult_Microbiome_Quadrants.png"),
+ggsave(file.path(out_dir, "Adult_Microbiome_Quadrants.png"),
        plot = p_scatter_ad, width = 11, height = 8, dpi = 300)
 
 # --- Espèce ---
@@ -1570,15 +1605,15 @@ df_core_ad_sp <- calculer_core_scatter(
 )
 p_scatter_ad_sp <- creer_quadrant_plot(
   df_core_ad_sp, "Species", SEUIL_PREVALENCE_AD, SEUIL_ABONDANCE_AD,
-  titre = "Adult Core Microbiome Structure (Beetles - Species level)",
+  titre = "Adult Microbiome Structure (Beetles - Species level)",
   style_label = "italic"
 )
-ggsave(file.path(out_dir, "Core_Adult_Microbiome_Quadrants_Species.png"),
+ggsave(file.path(out_dir, "Adult_Microbiome_Quadrants_Species.png"),
        plot = p_scatter_ad_sp, width = 11, height = 8, dpi = 300)
 
 
 # ==============================================================================
-# BLOC 14 : ACP (ANALYSE EN COMPOSANTES PRINCIPALES)
+# BLOC 14 : ACP (SANS LES SUBSTRATS)
 # ==============================================================================
 # L'ACP résume la structure de la communauté microbienne en 2 dimensions.
 # Des échantillons proches sur l'ACP ont des compositions microbiennes similaires.
@@ -1589,9 +1624,19 @@ ggsave(file.path(out_dir, "Core_Adult_Microbiome_Quadrants_Species.png"),
 #   - Réduit le poids des taxons dominants (qui sinon écraseraient tout le signal)
 #   - Atténue le "problème du double zéro" (deux échantillons sans un taxon rare
 #     ne doivent pas être considérés comme similaires pour autant)
-message("--- ACP Classique (Hellinger) ---")
+message("--- ACP Classique (Hellinger) - Insecte Uniquement ---")
 
-df_pca_norm <- normaliser_100(df_final_16s %>% filter(Genus != "Unassigned"), "Genus")
+# 1. Définition stricte des stades de l'insecte (sans les substrats)
+chronologie_insecte <- c("Tiny_Larvae (2 mg)", "Microlarvae (7 mg)", 
+                         "Larvae_S1 (14 mg)", "Larvae_S2 (40 mg)", 
+                         "Larvae_S3 (65 mg)", "Larvae_S4 (100 mg)", 
+                         "Pupae", "Young_Beetles", "Beetles")
+
+# 2. Filtrage pour ne garder QUE l'insecte ET retirer les genres "Unassigned"
+df_pca_norm <- normaliser_100(
+  df_final_16s %>% filter(Condition %in% chronologie_insecte, Genus != "Unassigned"), 
+  "Genus"
+)
 
 mat_pca <- df_pca_norm %>%
   pivot_wider(id_cols = Sample, names_from = Genus,
@@ -1614,10 +1659,11 @@ eig_vals <- pca_res$CA$eig
 var_pc1  <- round(eig_vals[1] / sum(eig_vals) * 100, 1)
 var_pc2  <- round(eig_vals[2] / sum(eig_vals) * 100, 1)
 
+# Fusion avec les métadonnées et forçage de l'ordre des facteurs (chronologie_insecte)
 df_plot_pca <- pca_coords %>%
   inner_join(meta %>% select(Sample, Condition) %>% mutate(Sample = as.character(Sample)),
              by = "Sample") %>%
-  mutate(Condition = factor(Condition, levels = chronologie_tout))
+  mutate(Condition = factor(Condition, levels = chronologie_insecte))
 
 p_pca <- ggplot(df_plot_pca, aes(x = PC1, y = PC2, color = Condition, fill = Condition)) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey70") +
@@ -1627,8 +1673,7 @@ p_pca <- ggplot(df_plot_pca, aes(x = PC1, y = PC2, color = Condition, fill = Con
   scale_color_manual(values = my_cond_colors) +
   scale_fill_manual(values = my_cond_colors) +
   labs(
-    title    = "Microbial Community Structure",
-    subtitle = "Hellinger-transformed relative abundances",
+    title    = "PCA Hellinger-transformed relative abundances",
     x = sprintf("PC1 (%s%%)", var_pc1),
     y = sprintf("PC2 (%s%%)", var_pc2),
     fill  = "Development Stage:",
@@ -1643,10 +1688,45 @@ p_pca <- ggplot(df_plot_pca, aes(x = PC1, y = PC2, color = Condition, fill = Con
     panel.grid.minor = element_blank()
   )
 
-ggsave(file.path(out_dir, "PCA_microbiote.png"),
+ggsave(file.path(out_dir, "PCA_microbiote_insecte_seul.png"),
        plot = p_pca, width = 10, height = 7, dpi = 300, bg = "white")
+# ------------------------------------------------------------------------------
+# GRAPHIQUE 2 : ACP AVEC ELLIPSES DE CONFIANCE (95%)
+# ------------------------------------------------------------------------------
+p_pca_ellipses <- ggplot(df_plot_pca, aes(x = PC1, y = PC2, color = Condition, fill = Condition)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey70") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey70") +
+  
+  # 1. Le fond de l'ellipse (polygone semi-transparent)
+  stat_ellipse(geom = "polygon", alpha = 0.15, level = 0.95, color = NA) +
+  
+  # 2. Le contour de l'ellipse (trait plus marqué)
+  stat_ellipse(geom = "path", linewidth = 0.8, level = 0.95) +
+  
+  # 3. Les points affichés par-dessus les ellipses
+  geom_point(size = 4, shape = 21, color = "black", stroke = 0.6) +
+  
+  scale_color_manual(values = my_cond_colors) +
+  scale_fill_manual(values = my_cond_colors) +
+  labs(
+    title    = "PCA Hellinger-transformed relative abundances",
+    x = sprintf("PC1 (%s%%)", var_pc1),
+    y = sprintf("PC2 (%s%%)", var_pc2),
+    fill  = "Development Stage:",
+    color = "Development Stage:"
+  ) +
+  theme_bw(base_size = 13) +
+  theme(
+    legend.position  = "right",
+    legend.title     = element_text(face = "bold"),
+    plot.title       = element_text(face = "bold", size = 16),
+    plot.subtitle    = element_text(color = "grey40", size = 12),
+    panel.grid.minor = element_blank()
+  )
 
+ggsave(file.path(out_dir, "PCA_microbiote_insecte_seul_ellipses.png"), plot = p_pca_ellipses, width = 10, height = 7, dpi = 300, bg = "white")
 
+message("=> ACP avec et sans ellipses générées avec succès !")
 # ==============================================================================
 # BLOC 15 : CORRÉLATION ALPHA vs BÊTA (RÉPLICATS + CENTROÏDES)
 # ==============================================================================
@@ -1695,7 +1775,6 @@ p_corr_ins <- ggplot() +
            fontface = "bold", color = "#C0392B", size = 5) +
   labs(
     title    = "Relationship between inter-individual instability and microbial complexity",
-    subtitle = "Large points = Stage exact mean | Small points = Individual replicates",
     x = "Intra-group heterogeneity (Mean Bray-Curtis distance)",
     y = "Individual Alpha diversity (Shannon Index)"
   ) +
@@ -1725,8 +1804,9 @@ message("=> Graphique de corrélation Alpha/Bêta généré.")
 # est une barre indépendante, ce qui facilite la comparaison entre espèces.
 message("--- Résolution Taxonomique Intra-Genre ---")
 
+# ---> NOUVEAUTÉ : Ajout de l'argument 'exclure_genres'
 generer_resolution_fragmente <- function(stades_cibles, titre_stade, nom_fichier,
-                                          top_n_genres = 8) {
+                                          top_n_genres = 8, exclure_genres = NULL) {
   message(sprintf("  -> Stade(s) : %s", paste(stades_cibles, collapse = ", ")))
 
   df_stade <- df_final_16s %>% filter(Condition %in% stades_cibles)
@@ -1739,7 +1819,8 @@ generer_resolution_fragmente <- function(stades_cibles, titre_stade, nom_fichier
   df_gen_agg <- df_norm_gen %>%
     group_by(Genus) %>%
     summarise(MeanAbund = sum(Relative_Abundance) / n_samp_stade, .groups = "drop") %>%
-    filter(!Genus %in% c("Non Assigné", "Unassigned"))
+    # ---> NOUVEAUTÉ : Le filtre exclut les non-assignés ET les genres que tu as choisis
+    filter(!Genus %in% c("Non Assigné", "Unassigned", exclure_genres))
 
   top_gen       <- df_gen_agg %>% slice_max(MeanAbund, n = top_n_genres) %>% pull(Genus)
   df_gen_labels <- df_gen_agg %>% filter(Genus %in% top_gen)
@@ -1825,21 +1906,152 @@ generer_resolution_fragmente <- function(stades_cibles, titre_stade, nom_fichier
   message(sprintf("  => '%s' sauvegardé.", nom_fichier))
 }
 
+# ==============================================================================
+# EXÉCUTIONS DES GRAPHIQUES
+# ==============================================================================
+
+# 1. Pour les larves
 generer_resolution_fragmente(
   stades_cibles = cond_larves,
   titre_stade   = "Average Larval Microbiome",
   nom_fichier   = "Taxonomic_Resolution_Average_Larvae.png",
+  top_n_genres  = 10,
+  exclure_genres = c("Listeria","Citrobacter","Lactobacillus","Bacillus")
+)
+
+generer_resolution_fragmente(
+  stades_cibles = c("Microlarvae (7 mg)"),
+  titre_stade   = "Microlarvae Microbiome",
+  nom_fichier   = "Taxonomic_Resolution_Microlarvae.png",
   top_n_genres  = 10
 )
 
 generer_resolution_fragmente(
-  stades_cibles = c("Beetles"),
-  titre_stade   = "Adult Microbiome (Beetles)",
-  nom_fichier   = "Taxonomic_Resolution_Adults.png",
+  stades_cibles = c("Larvae_S1 (14 mg)"),
+  titre_stade   = "Larvae S1 (14 mg) Microbiome",
+  nom_fichier   = "Taxonomic_Resolution_Larvae_S1.png",
   top_n_genres  = 10
 )
 
+generer_resolution_fragmente(
+  stades_cibles = c("Larvae_S2 (40 mg)"),
+  titre_stade   = "Larvae S2 (40 mg) Microbiome",
+  nom_fichier   = "Taxonomic_Resolution_Larvae_S2.png",
+  top_n_genres  = 10
+)
 
+generer_resolution_fragmente(
+  stades_cibles = c("Larvae_S3 (65 mg)"),
+  titre_stade   = "Larvae_S3 (65 mg) Microbiome",
+  nom_fichier   = "Taxonomic_Resolution_Larvae_S3.png",
+  top_n_genres  = 10
+)
+
+generer_resolution_fragmente(
+  stades_cibles = c("Larvae_S4 (100 mg)"),
+  titre_stade   = "Larvae_S4 (100 mg) Microbiome",
+  nom_fichier   = "Taxonomic_Resolution_Larvae_S4.png",
+  top_n_genres  = 10
+)
+
+generer_resolution_fragmente(
+  stades_cibles  = c("Beetles"),
+  titre_stade    = "Adult Microbiome (Beetles)",
+  nom_fichier    = "Taxonomic_Resolution_Adults.png",
+  top_n_genres   = 10
+)
+
+# ==============================================================================
+# BLOC 17 : DENDROGRAMMES DE CLUSTERING HIÉRARCHIQUE (VERSION ÉPURÉE)
+# ==============================================================================
+message("--- Génération des Dendrogrammes (Hellinger + Euclidien) ---")
+
+if (!requireNamespace("ggdendro", quietly = TRUE)) install.packages("ggdendro")
+suppressPackageStartupMessages(library(ggdendro))
+
+generer_dendrogramme_epure <- function(df_counts, meta_df, nom_fichier, titre) {
+  
+  # 1. Normalisation et préparation de la matrice
+  df_norm <- normaliser_100(df_counts %>% filter(Genus != "Unassigned"), "Genus")
+  
+  mat_wide <- df_norm %>%
+    pivot_wider(id_cols = Sample, names_from = Genus, values_from = Relative_Abundance, values_fill = 0) %>%
+    column_to_rownames("Sample")
+  
+  # 2. Transformation de Hellinger et Matrice de distance
+  mat_hellinger <- decostand(mat_wide, method = "hellinger")
+  dist_mat <- vegdist(mat_hellinger, method = "euclidean")
+  
+  # 3. Clustering
+  hc <- hclust(dist_mat, method = "ward.D2")
+  dendro <- dendro_data(hc, type = "rectangle")
+  
+  # 4. Préparation des étiquettes (feuilles de l'arbre)
+  labels_df <- label(dendro) %>%
+    rename(Sample = label) %>%
+    left_join(meta_df, by = "Sample")
+  
+# 5. Création du graphique épuré
+  p_dendro <- ggplot() +
+    # Dessin des branches
+    geom_segment(data = segment(dendro), aes(x = x, y = y, xend = xend, yend = yend), 
+                 color = "grey60", linewidth = 0.6) +
+    
+    # Ajout d'un point coloré à la fin de chaque branche (nœud terminal)
+    geom_point(data = labels_df, aes(x = x, y = y, fill = Condition), 
+               shape = 21, size = 3, color = "black", stroke = 0.5) +
+               
+    # Noms des réplicats alignés verticalement
+    geom_text(data = labels_df, aes(x = x, y = y - 0.03, label = Sample, color = Condition),
+              angle = 90, hjust = 1, vjust = 0.5, size = 4, fontface = "bold", 
+              show.legend = FALSE) + 
+              
+    scale_color_manual(values = my_cond_colors) +
+    scale_fill_manual(values = my_cond_colors) +
+    
+    # On étend l'axe Y vers le bas pour ne pas couper le texte
+    scale_y_continuous(expand = expansion(mult = c(0.25, 0.08))) +
+    
+    labs(
+      title = titre,
+      x = NULL,
+      y = "Height (Euclidean Distance)",
+      color = "Development Stage:",
+      fill = "Development Stage:"
+    ) +
+    
+    theme_bw(base_size = 13) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      legend.position = "bottom",
+      plot.title = element_text(face = "bold", size = 15),
+      plot.margin = margin(10, 10, 10, 10)
+    )
+  
+  ggsave(file.path(out_dir, nom_fichier), plot = p_dendro, width = 14, height = 8, dpi = 300, bg = "white")
+  message(sprintf("  => '%s' sauvegardé.", nom_fichier))
+}
+
+# --- EXÉCUTION ---
+
+# 1. Dendrogramme Global
+generer_dendrogramme_epure(
+  df_counts = df_final_16s %>% filter(Condition %in% chronologie_tout),
+  meta_df   = meta,
+  nom_fichier = "Dendrogramme_Global_Epure.png",
+  titre     = "Global Hierarchical Clustering (All Samples)"
+)
+
+# 2. Dendrogramme Insecte Seul
+generer_dendrogramme_epure(
+  df_counts = df_final_16s %>% filter(Condition %in% chronologie_insecte),
+  meta_df   = meta,
+  nom_fichier = "Dendrogramme_Insecte_Epure.png",
+  titre     = "Insect Hierarchical Clustering (Substrates Excluded)"
+)
 # ==============================================================================
 # FIN DU SCRIPT
 # ==============================================================================
