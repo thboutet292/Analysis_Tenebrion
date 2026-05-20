@@ -253,7 +253,7 @@ Raw data (FASTQ)
 [6b] α/β Diversity      Shannon per sample + Bray-Curtis between replicates
         |
         v
-[6c] Visualisation      Barplots, heatmaps, quadrants, PCA, correlations (22 figures)
+[6c] Visualisation      Barplots, heatmaps, quadrants, PCA, correlations
 ```
 
 ---
