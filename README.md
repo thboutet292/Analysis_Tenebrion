@@ -179,27 +179,35 @@ The script takes as input the QIIME2-like table produced at Step 5 and a metadat
 | File | Content |
 |---|---|
 | `Valeurs_Shannon_BrayCurtis.tsv` | Raw numerical table of alpha/beta indices |
-| `shannon_vs_braycurtis_.png` | Alpha/beta curves (insect only) |
-| `shannon_vs_braycurtis_substrats.png` | Alpha/beta curves (insect + substrates) |
-| `Barplot_Global_16S.png` | Taxonomic composition per replicate (all stages) |
+| `shannon_vs_braycurtis.png` / `.svg` | Alpha/beta curves (insect only) |
+| `Barplot_Global_16S.png` / `.svg` | Taxonomic composition per replicate (insect only) |
 | `Matrice_BrayCurtis_Tous_Replicats.png` | Bray-Curtis heatmap (all replicates) |
 | `Matrice_BrayCurtis_Insecte_Seul.png` | Bray-Curtis heatmap (insect only) |
-| `Master_Figure.png` / `_substrats.png` | Multi-panel master figures |
-| `Core_Larval_Microbiome_Means.png` | Mean larval core microbiome (Genus) |
-| `Core_Larval_Microbiome_Means_Species.png` | Mean larval core microbiome (Species) |
-| `Core_Microbiome_Quadrants.png` | Prevalence/Abundance quadrants, larvae (Genus) |
-| `Core_Microbiome_Quadrants_Species.png` | Prevalence/Abundance quadrants, larvae (Species) |
-| `Core_genome_heterogeneous.png` | Intra-stage fidelity matrices |
-| `Core_Adult_Microbiome_Means.png` | Mean adult core microbiome (Genus) |
-| `Core_Adult_Microbiome_Donut.png` | Adult donut chart (Genus) |
-| `Core_Adult_Microbiome_Means_Species.png` | Mean adult core microbiome (Species) |
-| `Core_Adult_Microbiome_Donut_Species.png` | Adult donut chart (Species) |
-| `Core_Adult_Microbiome_Quadrants.png` | Prevalence/Abundance quadrants, adults (Genus) |
-| `Core_Adult_Microbiome_Quadrants_Species.png` | Prevalence/Abundance quadrants, adults (Species) |
-| `PCA_microbiote.png` | PCA of community structures |
+| `Master_Figure_substrats.png` / `.svg` | Multi-panel master figure (insect + substrates) |
+| `Master_Figure.png` / `.svg` | Multi-panel master figure (insect only) |
+| `Larval_Microbiome_Means.png` | Mean larval core microbiome (Genus) |
+| `Larval_Microbiome_Means_Species.png` | Mean larval core microbiome (Species) |
+| `Larval_Microbiome_Quadrants.png` | Prevalence/Abundance quadrants, larvae (Genus) |
+| `Larval_Microbiome_Quadrants_Species.png` | Prevalence/Abundance quadrants, larvae (Species) |
+| `Genome_heterogeneous.png` | Intra-stage fidelity matrices |
+| `Adult_Microbiome_Means.png` | Mean adult core microbiome (Genus) |
+| `Adult_Microbiome_Donut.png` | Adult donut chart (Genus) |
+| `Adult_Microbiome_Means_Species.png` | Mean adult core microbiome (Species) |
+| `Adult_Microbiome_Donut_Species.png` | Adult donut chart (Species) |
+| `Adult_Microbiome_Quadrants.png` | Prevalence/Abundance quadrants, adults (Genus) |
+| `Adult_Microbiome_Quadrants_Species.png` | Prevalence/Abundance quadrants, adults (Species) |
+| `PCA_microbiote_insecte_seul.png` | PCA of community structures (insect only) |
+| `PCA_microbiote_insecte_seul_ellipses.png` | PCA with 95% confidence ellipses (insect only) |
 | `Correlation_Bray_vs_Shannon.png` / `.svg` | Alpha vs beta correlation (Spearman) |
-| `Taxonomic_Resolution_Average_Larvae.png` | Intra-genus resolution, larvae (top 10 genera) |
-| `Taxonomic_Resolution_Adults.png` | Intra-genus resolution, adults (top 10 genera) |
+| `Taxonomic_Resolution_Average_Larvae.png` | Intra-genus resolution, all larval stages pooled |
+| `Taxonomic_Resolution_Microlarvae.png` | Intra-genus resolution, Microlarvae (7 mg) |
+| `Taxonomic_Resolution_Larvae_S1.png` | Intra-genus resolution, Larvae S1 (14 mg) |
+| `Taxonomic_Resolution_Larvae_S2.png` | Intra-genus resolution, Larvae S2 (40 mg) |
+| `Taxonomic_Resolution_Larvae_S3.png` | Intra-genus resolution, Larvae S3 (65 mg) |
+| `Taxonomic_Resolution_Larvae_S4.png` | Intra-genus resolution, Larvae S4 (100 mg) |
+| `Taxonomic_Resolution_Adults.png` | Intra-genus resolution, adults |
+| `Dendrogramme_Global_Epure.png` | Hierarchical clustering dendrogram (all samples) |
+| `Dendrogramme_Insecte_Epure.png` | Hierarchical clustering dendrogram (insect only) |
 
 ---
 
