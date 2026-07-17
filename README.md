@@ -278,13 +278,6 @@ Raw data (FASTQ)
 
 ---
 
-## Author
-
-Thomas BOUTET — Tenebrion Project, 16S metagenomic analysis of *Tenebrio molitor*
-
----
----
-
 # Shotgun Metagenomic Pipeline — *Tenebrio molitor*
 
 Bioinformatic analysis of bacterial communities associated with the different developmental stages of *Tenebrio molitor* using Shotgun metagenomic sequencing.
@@ -423,5 +416,5 @@ Taxonomic abundance table           [4] Binning → MAGs
 
 ## Author
 
-Thomas BOUTET — Tenebrion Project, Shotgun metagenomic analysis of *Tenebrio molitor*
+Thomas BOUTET — Tenebrion Project
 
