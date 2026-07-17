@@ -289,7 +289,7 @@ Bioinformatic analysis of bacterial communities associated with the different de
 Process raw shotgun sequencing data to characterise bacterial communities through two complementary strategies:
 
 - A **read-based approach** (Kraken2) for rapid, whole-community taxonomic profiling directly from cleaned reads, enabling fast comparisons across developmental stages.
-- An **assembly-based approach** (assembly → binning → annotation) to reconstruct Metagenome-Assembled Genomes (MAGs) and access functional gene content, complementing the taxonomic resolution obtained from the 16S pipeline.
+- An **assembly-based approach** to reconstruct Metagenome-Assembled Genomes (MAGs) and access functional gene content, complementing the taxonomic resolution obtained from the 16S pipeline.
 
 Before any downstream analysis, host-derived reads (*Tenebrio molitor* genome) are systematically removed to avoid contamination of the microbial signal.
 
