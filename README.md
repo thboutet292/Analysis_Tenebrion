@@ -1,3 +1,10 @@
+## Table of Contents
+
+- [16S rRNA Pipeline](#16s-metagenomic-pipeline--tenebrio-molitor)
+- [Shotgun Pipeline](#shotgun-metagenomic-pipeline--tenebrio-molitor)
+
+---
+
 # 16S Metagenomic Pipeline — *Tenebrio molitor*
 
 Bioinformatic analysis of bacterial communities associated with the different developmental stages of *Tenebrio molitor* using full-length 16S and Shotgun sequencing.
@@ -274,3 +281,147 @@ Raw data (FASTQ)
 ## Author
 
 Thomas BOUTET — Tenebrion Project, 16S metagenomic analysis of *Tenebrio molitor*
+
+---
+---
+
+# Shotgun Metagenomic Pipeline — *Tenebrio molitor*
+
+Bioinformatic analysis of bacterial communities associated with the different developmental stages of *Tenebrio molitor* using Shotgun metagenomic sequencing.
+
+---
+
+## Objective
+
+Process raw shotgun sequencing data to characterise bacterial communities through two complementary strategies:
+
+- A **read-based approach** (Kraken2) for rapid, whole-community taxonomic profiling directly from cleaned reads, enabling fast comparisons across developmental stages.
+- An **assembly-based approach** (assembly → binning → annotation) to reconstruct Metagenome-Assembled Genomes (MAGs) and access functional gene content, complementing the taxonomic resolution obtained from the 16S pipeline.
+
+Before any downstream analysis, host-derived reads (*Tenebrio molitor* genome) are systematically removed to avoid contamination of the microbial signal.
+
+The entire pipeline is designed to run on an **HPC computing cluster** via the **SLURM** job scheduler, with parallelisation through job arrays. Raw and intermediate data are stored on an **S3 remote** (`s3_uca:lmge-tenebrion`), accessed via `rclone`.
+
+---
+
+## Tools and versions
+
+| Tool | Version | Invocation method | Role |
+|---|---|---|---|
+| rclone | 1.55.1 | SLURM module | Data transfer to/from S3 storage |
+| Bowtie2 | 2.3.4.3 | SLURM module | Host read alignment (decontamination) |
+| samtools | 1.16.1 | SLURM module | BAM filtering, sorting, FASTQ extraction |
+| Kraken2 | *TBD* | *TBD* | Read-based taxonomic profiling |
+| *(assembler)* | *TBD* | *TBD* | Metagenomic assembly |
+| *(binning tool)* | *TBD* | *TBD* | Genome binning (MAGs recovery) |
+| *(annotation tool)* | *TBD* | *TBD* | Functional/taxonomic annotation of bins |
+
+*(table to complete once the Kraken2 / assembly / binning / annotation scripts are added)*
+
+---
+
+## Project architecture
+
+```
+shotgun_tenebrion/
+├── bin/                                     # SLURM submission scripts
+│   ├── host_decontamination_bowtie2.slurm   # Step 1 — Host read removal
+│   ├── ...                                  # Step 2 — Kraken2 taxonomic profiling
+│   ├── ...                                  # Step 3 — Assembly
+│   ├── ...                                  # Step 4 — Binning
+│   └── ...                                  # Step 5 — Bin annotation
+│
+├── resources/                        # Bowtie2 index, reference genome, databases
+├── data/
+│   └── raw/                          # Raw files (mirrored on S3: shotgun_bruts/)
+├── log/                               # SLURM log files (.out / .err)
+└── results/
+    └── shotgun_cleaned/               # Host-decontaminated FASTQ + stats (S3: shotgun_cleaned/)
+```
+
+> Note: unlike the 16S pipeline (fully local `data/` and `results/`), the shotgun pipeline uses an **S3 bucket** (`lmge-tenebrion`) as the primary storage for raw and cleaned reads, accessed via `rclone`.
+
+---
+
+## Running the pipeline
+
+```bash
+sbatch bin/host_decontamination_bowtie2.slurm
+# Step 2 onward — to be completed
+```
+
+Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it auto-detects the sample list on S3 and resubmits itself with the correct array range.
+
+---
+
+## Script descriptions
+
+---
+
+### Step 1 — `host_decontamination_bowtie2.slurm`: Host read removal
+
+**Objective:** Remove *Tenebrio molitor* host reads from raw shotgun sequencing data before any taxonomic or functional analysis, keeping only microbiome-derived reads.
+
+**Dynamic array submission.** The script first lists all `*_R1.fastq.gz` samples available on the S3 bucket (`shotgun_bruts/`) via `rclone ls`. When launched without a SLURM array task ID, it counts the samples and resubmits itself as a job array (`--array=0-N-1`), one task per sample.
+
+**Safe, concurrency-proof index construction.** Since all array tasks start simultaneously, the first task to acquire an atomic lock (`mkdir` on a dedicated lock folder) downloads the *T. molitor* reference genome (`GCA_963966145.1_icTenMoli1.1`) from S3 and builds the Bowtie2 index. Other tasks detect the lock and wait (polling every 30 s) until the index is available, avoiding redundant downloads/builds and race conditions.
+
+**Local scratch execution.** Each array task works in a dedicated folder under `/storage/scratch/${USER}/`, automatically cleaned up on exit (`trap cleanup EXIT`), to avoid I/O bottlenecks and leftover files on the shared filesystem.
+
+**Host mapping (Bowtie2).** Paired-end reads are downloaded from S3 and aligned against the indexed host genome using `bowtie2 --very-sensitive`, piped directly into a BAM file via `samtools view`.
+
+**Microbiome extraction (samtools).** Read pairs where *both* mates are unmapped (`-f 12`) are kept — i.e. strictly host-free pairs — and exported as clean paired FASTQ files (`samtools fastq`).
+
+**Decontamination report.** For each sample, the script computes the total read count, host read count/percentage, and microbiome read count/percentage, saved as a `<sample>_decontam_report.txt` table.
+
+**Export to S3.** Clean FASTQ files and the per-sample report are pushed back to S3, under `shotgun_cleaned/fastq/` and `shotgun_cleaned/stats/` respectively.
+
+---
+
+### Step 2 — Kraken2 taxonomic profiling *(to complete)*
+
+### Step 3 — Metagenomic assembly *(to complete)*
+
+### Step 4 — Binning *(to complete)*
+
+### Step 5 — Bin annotation *(to complete)*
+
+---
+
+## Pipeline diagram
+
+```
+Raw shotgun data (FASTQ, on S3)
+        |
+        v
+[1] Host decontamination     Bowtie2 alignment vs T. molitor genome + samtools filtering (-f 12)
+        |
+        +---------------------------------+
+        |                                 |
+        v                                 v
+[2] Read-based profiling            [3] Assembly
+    Kraken2                             ...
+        |                                 |
+        v                                 v
+Taxonomic abundance table           [4] Binning → MAGs
+                                          |
+                                          v
+                                     [5] Annotation
+```
+
+---
+
+## Prerequisites
+
+- HPC cluster with **SLURM** job scheduler
+- **rclone** configured with an S3 remote (`s3_uca`) pointing to the `lmge-tenebrion` bucket
+- Modules available on the cluster: `rclone/1.55.1`, `bowtie2/2.3.4.3`, `gcc/8.1.0`, `samtools/1.16.1`
+- Reference genome of *Tenebrio molitor* (`GCA_963966145.1_icTenMoli1.1`) hosted on S3 (`ref/genome/`)
+- Internet/S3 access from compute nodes
+
+---
+
+## Author
+
+Thomas BOUTET — Tenebrion Project, Shotgun metagenomic analysis of *Tenebrio molitor*
+
