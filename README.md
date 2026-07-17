@@ -289,7 +289,7 @@ Bioinformatic analysis of bacterial communities associated with the different de
 Process raw shotgun sequencing data to characterise bacterial communities through two complementary strategies:
 
 - A **read-based approach** (Kraken2) for rapid, whole-community taxonomic profiling directly from cleaned reads, enabling fast comparisons across developmental stages.
-- An **assembly-based approach** to reconstruct Metagenome-Assembled Genomes (MAGs) and access functional gene content, complementing the taxonomic resolution obtained from the 16S pipeline.
+- An **assembly-based approach** (assembly → binning → annotation) to reconstruct Metagenome-Assembled Genomes (MAGs) and access functional gene content, complementing the taxonomic resolution obtained from the 16S pipeline.
 
 Before any downstream analysis, host-derived reads (*Tenebrio molitor* genome) are systematically removed to avoid contamination of the microbial signal.
 
@@ -304,12 +304,15 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | rclone | 1.55.1 | SLURM module | Data transfer to/from S3 storage |
 | Bowtie2 | 2.3.4.3 | SLURM module | Host read alignment (decontamination) |
 | samtools | 1.16.1 | SLURM module | BAM filtering, sorting, FASTQ extraction |
-| Kraken2 | *TBD* | *TBD* | Read-based taxonomic profiling |
+| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken container (shared with the 16S pipeline: `16_tenebrion/containers/kraken2_bracken.sif`) |
+| Kraken2 | *(per container image)* | Apptainer image | K-mer-based taxonomic assignment of paired reads |
+| Bracken | *(per container image)* | Apptainer image | Bayesian re-estimation of species-level abundances from Kraken2 reports |
+| NCBI Datasets CLI | v2 (linux-amd64) | Downloaded binary | Genome retrieval for the custom insect-focused Kraken2 addon database |
 | *(assembler)* | *TBD* | *TBD* | Metagenomic assembly |
 | *(binning tool)* | *TBD* | *TBD* | Genome binning (MAGs recovery) |
 | *(annotation tool)* | *TBD* | *TBD* | Functional/taxonomic annotation of bins |
 
-*(table to complete once the Kraken2 / assembly / binning / annotation scripts are added)*
+*(assembly / binning / annotation rows to complete once the corresponding scripts are added)*
 
 ---
 
@@ -319,7 +322,10 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 shotgun_tenebrion/
 ├── bin/                                     # SLURM submission scripts
 │   ├── host_decontamination_bowtie2.slurm   # Step 1 — Host read removal
-│   ├── ...                                  # Step 2 — Kraken2 taxonomic profiling
+│   ├── build_kraken2_db.slurm               # Step 2a — Download the Kraken2 PlusPFP database
+│   ├── build_kraken_custom.slurm            # Step 2b — Build the custom insect addon database
+│   ├── shotgun_kraken2_bracken.slurm        # Step 2c — Kraken2/Bracken profiling (PlusPFP only)
+│   ├── shotgun_kraken2_bracken_addon.slurm  # Step 2d — Kraken2/Bracken profiling (PlusPFP + Addon, dual)
 │   ├── ...                                  # Step 3 — Assembly
 │   ├── ...                                  # Step 4 — Binning
 │   └── ...                                  # Step 5 — Bin annotation
@@ -329,7 +335,11 @@ shotgun_tenebrion/
 │   └── raw/                          # Raw files (mirrored on S3: shotgun_bruts/)
 ├── log/                               # SLURM log files (.out / .err)
 └── results/
-    └── shotgun_cleaned/               # Host-decontaminated FASTQ + stats (S3: shotgun_cleaned/)
+    ├── shotgun_cleaned/               # Host-decontaminated FASTQ + stats (S3: shotgun_cleaned/)
+    ├── kraken2_pluspfp/               # Kraken2 reports vs. PlusPFP database
+    ├── bracken_pluspfp/               # Bracken species-level abundance tables (PlusPFP)
+    ├── kraken2_addon/                 # Kraken2 reports vs. custom Insect Addon database
+    └── bracken_addon/                 # Bracken species-level abundance tables (Addon)
 ```
 
 > Note: unlike the 16S pipeline (fully local `data/` and `results/`), the shotgun pipeline uses an **S3 bucket** (`lmge-tenebrion`) as the primary storage for raw and cleaned reads, accessed via `rclone`.
@@ -340,8 +350,13 @@ shotgun_tenebrion/
 
 ```bash
 sbatch bin/host_decontamination_bowtie2.slurm
-# Step 2 onward — to be completed
+sbatch bin/build_kraken2_db.slurm               # once — builds the PlusPFP database on S3
+sbatch bin/build_kraken_custom.slurm            # once — builds the insect addon database on S3
+sbatch bin/shotgun_kraken2_bracken_addon.slurm  # per-sample array — dual-database profiling
+# Step 3 onward — to be completed
 ```
+
+`shotgun_kraken2_bracken.slurm` (PlusPFP-only) is the earlier, single-database version of the profiling step; `shotgun_kraken2_bracken_addon.slurm` supersedes it once the insect addon database is available, since it reproduces the PlusPFP run and adds the addon pass in the same job.
 
 Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it auto-detects the sample list on S3 and resubmits itself with the correct array range.
 
@@ -371,7 +386,26 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 
 ---
 
-### Step 2 — Kraken2 taxonomic profiling *(to complete)*
+### Step 2 — Kraken2 / Bracken: Read-based taxonomic profiling
+
+**Objective:** Assign a taxonomy to every decontaminated read pair and estimate species-level relative abundances directly from reads (no assembly), enabling fast whole-community comparisons across developmental stages.
+
+**Database construction — `build_kraken2_db.slurm`.** Downloads the pre-built Kraken2 **PlusPFP** database (Standard + Protozoa + Fungi + Plant, `k2_pluspfp_20240112`, ~75 GB) from the official Kraken2 index mirror, extracts it on `/storage/scratch` to avoid saturating `/home`, and uploads the resulting `.k2d` files to S3 (`ref/kraken2_pluspfp/`).
+
+**Custom database construction — `build_kraken_custom.slurm`.** Builds a **custom "insect addon" database** targeting taxa poorly represented in PlusPFP but expected in the *T. molitor* microbiome: entomopathogenic fungi (*Beauveria*, *Metarhizium*, *Cordyceps*, *Ophiocordyceps*, *Lecanicillium*...), insect-associated yeasts, insect viruses (Baculoviridae, Iridovirus, Alphaentomopoxvirus...), gut protozoan parasites (*Gregarina*, *Nosema*, *Crithidia*, *Leptomonas*...) and archaea (*Methanobrevibacter* spp.). Genomes are retrieved via the **NCBI Datasets CLI**, and TaxIDs are injected directly into FASTA headers (`kraken:taxid|...`) to **bypass** the standard NCBI accession2taxid mapping — a lightweight taxonomy (`nodes.dmp`/`names.dmp` only, with empty accession2taxid placeholders) is enough for `kraken2-build` to compile the database, considerably speeding up construction. The database is built and cleaned with `kraken2-build`, then uploaded to S3 (`ref/kraken2_insect_addon/`). Both database scripts run Kraken2 tools through the same Apptainer image already built for the 16S pipeline (`16_tenebrion/containers/kraken2_bracken.sif`).
+
+**Per-sample profiling, single database — `shotgun_kraken2_bracken.slurm`.** Initial version of the profiling step, run as a **SLURM Array** (one task per sample, self-submitting like the decontamination script). The PlusPFP database is synced once from S3 to a shared scratch location, guarded by a `flock`-based lock and a `.sync_done` flag file so concurrent array tasks don't duplicate the transfer. Kraken2 assigns paired, gzip-compressed reads (`--paired --gzip-compressed --use-names`) against the database, then Bracken re-estimates species-level abundances (`-l S`, assumed read length 150 bp) from the resulting Kraken2 report.
+
+**Per-sample profiling, dual database — `shotgun_kraken2_bracken_addon.slurm`.** Extended version run once the insect addon database is available: profiles each sample against **both databases** (PlusPFP and Insect Addon) within the same job, each with its own scratch sync/lock, producing two independent Kraken2/Bracken report pairs per sample. The addon Bracken step is wrapped in `|| true` since `bracken-build` may not yet have been run on every addon database revision, allowing the job to complete even if that particular re-estimation fails.
+
+**Outputs**, copied to `results/`:
+
+| Folder | Content |
+|---|---|
+| `kraken2_pluspfp/` | Kraken2 reports (`.kreport`) vs. the PlusPFP database |
+| `bracken_pluspfp/` | Bracken species-level abundance tables and re-estimated reports (PlusPFP) |
+| `kraken2_addon/` | Kraken2 reports vs. the custom Insect Addon database |
+| `bracken_addon/` | Bracken species-level abundance tables and re-estimated reports (Addon) |
 
 ### Step 3 — Metagenomic assembly *(to complete)*
 
@@ -393,11 +427,15 @@ Raw shotgun data (FASTQ, on S3)
         |                                 |
         v                                 v
 [2] Read-based profiling            [3] Assembly
-    Kraken2                             ...
+    PlusPFP DB   <--[2a] build_kraken2_db      ...
+    Insect Addon <--[2b] build_kraken_custom
+        |
+        v
+    [2c/2d] Kraken2 + Bracken (per sample, dual-DB)
         |                                 |
         v                                 v
-Taxonomic abundance table           [4] Binning → MAGs
-                                          |
+Taxonomic abundance tables          [4] Binning → MAGs
+(PlusPFP + Addon)                        |
                                           v
                                      [5] Annotation
 ```
@@ -408,8 +446,11 @@ Taxonomic abundance table           [4] Binning → MAGs
 
 - HPC cluster with **SLURM** job scheduler
 - **rclone** configured with an S3 remote (`s3_uca`) pointing to the `lmge-tenebrion` bucket
+- **Apptainer/Singularity** available as a system binary, with the `kraken2_bracken.sif` image built for the 16S pipeline (`16_tenebrion/containers/`)
 - Modules available on the cluster: `rclone/1.55.1`, `bowtie2/2.3.4.3`, `gcc/8.1.0`, `samtools/1.16.1`
 - Reference genome of *Tenebrio molitor* (`GCA_963966145.1_icTenMoli1.1`) hosted on S3 (`ref/genome/`)
+- Kraken2 databases hosted on S3: PlusPFP (`ref/kraken2_pluspfp/`) and the custom Insect Addon (`ref/kraken2_insect_addon/`)
+- **NCBI Datasets CLI** (fetched automatically by `build_kraken_custom.slurm`) for the addon database genomes
 - Internet/S3 access from compute nodes
 
 ---
@@ -417,4 +458,3 @@ Taxonomic abundance table           [4] Binning → MAGs
 ## Author
 
 Thomas BOUTET — Tenebrion Project
-
