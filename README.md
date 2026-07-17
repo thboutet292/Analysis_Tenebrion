@@ -304,15 +304,17 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | rclone | 1.55.1 | SLURM module | Data transfer to/from S3 storage |
 | Bowtie2 | 2.3.4.3 | SLURM module | Host read alignment (decontamination) |
 | samtools | 1.16.1 | SLURM module | BAM filtering, sorting, FASTQ extraction |
-| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken container (shared with the 16S pipeline: `16_tenebrion/containers/kraken2_bracken.sif`) |
+| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken and CoverM containers |
 | Kraken2 | *(per container image)* | Apptainer image | K-mer-based taxonomic assignment of paired reads |
 | Bracken | *(per container image)* | Apptainer image | Bayesian re-estimation of species-level abundances from Kraken2 reports |
 | NCBI Datasets CLI | v2 (linux-amd64) | Downloaded binary | Genome retrieval for the custom insect-focused Kraken2 addon database |
-| *(assembler)* | *TBD* | *TBD* | Metagenomic assembly |
+| MEGAHIT | 1.2.9 | SLURM module | De novo metagenomic assembly, run independently per sample (`--presets meta-sensitive`) |
+| MMseqs2 | 13-45111 | SLURM module | Contig catalog construction via linear-time clustering (dereplication) |
+| CoverM | 0.7.0 | Apptainer image | Read mapping (minimap2-sr) and coverage/abundance quantification against the non-redundant catalog |
 | *(binning tool)* | *TBD* | *TBD* | Genome binning (MAGs recovery) |
 | *(annotation tool)* | *TBD* | *TBD* | Functional/taxonomic annotation of bins |
 
-*(assembly / binning / annotation rows to complete once the corresponding scripts are added)*
+*(binning / annotation rows to complete once the corresponding scripts are added)*
 
 ---
 
@@ -326,7 +328,7 @@ shotgun_tenebrion/
 │   ├── build_kraken_custom.slurm            # Step 2b — Build the custom insect addon database
 │   ├── shotgun_kraken2_bracken.slurm        # Step 2c — Kraken2/Bracken profiling (PlusPFP only)
 │   ├── shotgun_kraken2_bracken_addon.slurm  # Step 2d — Kraken2/Bracken profiling (PlusPFP + Addon, dual)
-│   ├── ...                                  # Step 3 — Assembly
+│   ├── shotgun_megahit_full.slurm           # Step 3 — Per-sample de novo assembly (MEGAHIT)
 │   ├── ...                                  # Step 4 — Binning
 │   └── ...                                  # Step 5 — Bin annotation
 │
@@ -339,7 +341,8 @@ shotgun_tenebrion/
     ├── kraken2_pluspfp/               # Kraken2 reports vs. PlusPFP database
     ├── bracken_pluspfp/               # Bracken species-level abundance tables (PlusPFP)
     ├── kraken2_addon/                 # Kraken2 reports vs. custom Insect Addon database
-    └── bracken_addon/                 # Bracken species-level abundance tables (Addon)
+    ├── bracken_addon/                 # Bracken species-level abundance tables (Addon)
+    └── assembly_megahit/              # Per-sample contigs + MEGAHIT logs
 ```
 
 > Note: unlike the 16S pipeline (fully local `data/` and `results/`), the shotgun pipeline uses an **S3 bucket** (`lmge-tenebrion`) as the primary storage for raw and cleaned reads, accessed via `rclone`.
@@ -353,7 +356,10 @@ sbatch bin/host_decontamination_bowtie2.slurm
 sbatch bin/build_kraken2_db.slurm               # once — builds the PlusPFP database on S3
 sbatch bin/build_kraken_custom.slurm            # once — builds the insect addon database on S3
 sbatch bin/shotgun_kraken2_bracken_addon.slurm  # per-sample array — dual-database profiling
-# Step 3 onward — to be completed
+sbatch bin/shotgun_megahit_full.slurm           # per-sample array — de novo assembly (MEGAHIT)
+sbatch bin/pull_coverm.slurm                    # once — pulls the CoverM Apptainer image
+sbatch bin/shotgun_coverm.slurm                 # per-sample array — catalog build (leader task) + coverage profiling
+# Step 5 onward — to be completed
 ```
 
 `shotgun_kraken2_bracken.slurm` (PlusPFP-only) is the earlier, single-database version of the profiling step; `shotgun_kraken2_bracken_addon.slurm` supersedes it once the insect addon database is available, since it reproduces the PlusPFP run and adds the addon pass in the same job.
@@ -407,11 +413,53 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 | `kraken2_addon/` | Kraken2 reports vs. the custom Insect Addon database |
 | `bracken_addon/` | Bracken species-level abundance tables and re-estimated reports (Addon) |
 
-### Step 3 — Metagenomic assembly *(to complete)*
+---
 
-### Step 4 — Binning *(to complete)*
+### Step 3 — `shotgun_megahit_full.slurm`: Per-sample de novo assembly
 
-### Step 5 — Bin annotation *(to complete)*
+**Objective:** Reconstruct contigs from decontaminated reads via de Bruijn graph assembly, independently for each sample (no co-assembly across samples).
+
+**Dynamic array submission.** As in Step 1, the script lists all `*_clean_R1.fastq.gz` samples available on S3 (`shotgun_cleaned/fastq/`) via `rclone ls`. When launched without a SLURM array task ID, it counts the samples and resubmits itself as a job array (`--array=0-N-1`), one task per sample.
+
+**Local scratch execution.** Each array task works in a dedicated folder under `/storage/scratch/${USER}/`, automatically cleaned up on exit (`trap cleanup EXIT`).
+
+**Full-file retrieval.** Unlike the on-the-fly streaming used in the 16S cleaning step, the entire cleaned FASTQ pair for the sample is downloaded from S3 before assembly.
+
+**Assembly (MEGAHIT).** Reads are assembled with the `meta-sensitive` preset, tuned for complex, low-abundance metagenomic communities at the cost of longer runtime. Each sample is assembled **independently** — reads from different samples are never pooled, so this is a per-sample assembly strategy rather than a co-assembly.
+
+**Export to project directory.** The resulting contigs (`<sample>_megahit.contigs.fa`) and the MEGAHIT log are copied to `results/assembly_megahit/`.
+
+| Folder | Content |
+|---|---|
+| `assembly_megahit/` | Per-sample contigs (`<sample>_megahit.contigs.fa`) + MEGAHIT logs |
+
+---
+
+### Step 4 — `pull_coverm.slurm` + `shotgun_coverm.slurm`: Contig catalog & coverage profiling
+
+**Objective:** Merge all per-sample MEGAHIT assemblies into a single non-redundant contig catalog, then quantify the coverage of every sample's reads against that catalog — producing the cross-sample differential coverage signal that downstream binning tools rely on.
+
+**Image installation — `pull_coverm.slurm`.** Pulls the CoverM 0.7.0 Apptainer image from the Biocontainers registry, with the Apptainer cache/tmp redirected to scratch to avoid filling `/home`.
+
+**Dynamic array submission — `shotgun_coverm.slurm`.** As in the previous steps, the script lists all cleaned samples on S3 and resubmits itself as a SLURM array (one task per sample) when launched without an array task ID.
+
+**Catalog construction (mutex/leader task).** Before any per-sample work, exactly one array task builds the global catalog, guarded by an atomic `mkdir`-based lock — other tasks poll every 30 s until a `.catalog_done.lock` flag file appears:
+- All per-sample MEGAHIT contigs are concatenated, with each contig header prefixed by its sample name (e.g. `>k141_1` → `>AR_E40_k141_1`) to prevent ID collisions across samples.
+- Contigs shorter than 1,500 bp are discarded via an explicit `awk` filter on the merged FASTA — a deliberate cutoff applied before clustering, not an automatic behaviour of MMseqs2.
+- The filtered set is dereplicated with `mmseqs easy-linclust` (`--min-seq-id 0.95 -c 0.90 --cov-mode 1`): contigs at least 95% identical over 90% of the longer sequence's length are collapsed, keeping one representative per cluster. This produces `non_redundant_catalog.fasta`.
+
+**Per-sample coverage profiling (array task).** Once the catalog is available, each task downloads its sample's full cleaned read pair from S3 into an isolated scratch folder (`trap cleanup EXIT`) and runs CoverM (`coverm contig`) inside the Apptainer image: reads are mapped onto the catalog with `minimap2-sr`, filtered at 95% read identity, and summarised as `trimmed_mean` and `count` per contig. BAM files are cached alongside the per-sample coverage table for reuse by downstream steps.
+
+| Folder | Content |
+|---|---|
+| `global_catalog/` | Non-redundant contig catalog (`non_redundant_catalog.fasta`) |
+| `coverm/` | Per-sample coverage tables (`<sample>_coverage.tsv`) + cached BAMs (`bams/`) |
+
+---
+
+### Step 5 — Binning *(to complete)*
+
+### Step 6 — Bin annotation *(to complete)*
 
 ---
 
@@ -442,12 +490,14 @@ Taxonomic abundance tables          [4] Binning → MAGs
 
 ---
 
+---
+
 ## Prerequisites
 
 - HPC cluster with **SLURM** job scheduler
 - **rclone** configured with an S3 remote (`s3_uca`) pointing to the `lmge-tenebrion` bucket
-- **Apptainer/Singularity** available as a system binary, with the `kraken2_bracken.sif` image built for the 16S pipeline (`16_tenebrion/containers/`)
-- Modules available on the cluster: `rclone/1.55.1`, `bowtie2/2.3.4.3`, `gcc/8.1.0`, `samtools/1.16.1`
+- **Apptainer/Singularity** available as a system binary, with the `kraken2_bracken.sif` image built for the 16S pipeline (`16_tenebrion/containers/`) and the `coverm_v0.7.0.sif` image (`pull_coverm.slurm`) in `containers/`
+- Modules available on the cluster: `rclone/1.55.1`, `bowtie2/2.3.4.3`, `gcc/8.1.0`, `samtools/1.16.1`, `megahit/1.2.9`, `MMseqs2/13-45111`
 - Reference genome of *Tenebrio molitor* (`GCA_963966145.1_icTenMoli1.1`) hosted on S3 (`ref/genome/`)
 - Kraken2 databases hosted on S3: PlusPFP (`ref/kraken2_pluspfp/`) and the custom Insect Addon (`ref/kraken2_insect_addon/`)
 - **NCBI Datasets CLI** (fetched automatically by `build_kraken_custom.slurm`) for the addon database genomes
