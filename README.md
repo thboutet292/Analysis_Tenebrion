@@ -289,7 +289,7 @@ Bioinformatic analysis of bacterial communities associated with the different de
 Process raw shotgun sequencing data to characterise bacterial communities through two complementary strategies:
 
 - A **read-based approach** (Kraken2) for rapid, whole-community taxonomic profiling directly from cleaned reads, enabling fast comparisons across developmental stages.
-- An **assembly-based approach** (assembly → binning → QC → annotation) to reconstruct Metagenome-Assembled Genomes (MAGs) and access functional gene content, complementing the taxonomic resolution obtained from the 16S pipeline.
+- An **assembly-based approach** (assembly → binning → QC → taxonomy → functional annotation) to reconstruct Metagenome-Assembled Genomes (MAGs) and access functional gene content, complementing the taxonomic resolution obtained from the 16S pipeline.
 
 Before any downstream analysis, host-derived reads (*Tenebrio molitor* genome) are systematically removed to avoid contamination of the microbial signal.
 
@@ -304,7 +304,7 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | rclone | 1.55.1 | SLURM module | Data transfer to/from S3 storage |
 | Bowtie2 | 2.3.4.3 | SLURM module | Host read alignment (decontamination) |
 | samtools | 1.16.1 | SLURM module | BAM filtering, sorting, FASTQ extraction |
-| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken, CoverM, binning and CheckM2 containers |
+| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken, CoverM, binning, CheckM2 and GTDB-Tk containers |
 | Kraken2 | *(per container image)* | Apptainer image | K-mer-based taxonomic assignment of paired reads |
 | Bracken | *(per container image)* | Apptainer image | Bayesian re-estimation of species-level abundances from Kraken2 reports |
 | NCBI Datasets CLI | v2 (linux-amd64) | Downloaded binary | Genome retrieval for the custom insect-focused Kraken2 addon database |
@@ -315,9 +315,10 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | SemiBin2 | 2.1.0 | Apptainer image | Genome binning via self-supervised deep learning (`single_easy_bin`) |
 | CONCOCT | 1.1.0 | Apptainer image | Genome binning via Gaussian mixture clustering on chunked contigs |
 | CheckM2 | 1.0.2 | Apptainer image | MAG quality assessment (completeness/contamination) via Machine Learning (Diamond BlastP) |
-| *(annotation tool)* | *TBD* | *TBD* | Taxonomic (GTDB-Tk) and functional (DRAM) annotation of bins |
+| GTDB-Tk | 2.3.2 (DB release R214) | Apptainer image | Taxonomic assignment of MAGs (marker gene placement + FastANI) |
+| *(functional annotation tool)* | *TBD* | *TBD* | Functional annotation of bins (e.g. DRAM) |
 
-*(annotation row to complete once the corresponding scripts are added)*
+*(functional annotation row to complete once the corresponding scripts are added)*
 
 ---
 
@@ -341,7 +342,10 @@ shotgun_tenebrion/
 │   ├── pull_checkm2.slurm                   # Step 6a — Install the CheckM2 Apptainer image + ML database
 │   ├── build_checkm2_db.slurm               # Step 6b — (one-off) Upload the CheckM2 database to S3
 │   ├── shotgun_checkm2.slurm                # Step 6c — Quality control of the 3 binners' MAGs (CheckM2)
-│   └── ...                                  # Step 7 — Taxonomic & functional annotation
+│   ├── pull_gtdbtk.slurm                    # Step 7a — Install the GTDB-Tk Apptainer image
+│   ├── build_gtdbtk.slurm                   # Step 7b — (one-off) Upload the GTDB-Tk R214 database to S3
+│   ├── shotgun_gtdbtk.slurm                 # Step 7c — Taxonomic assignment of the 3 binners' MAGs (GTDB-Tk)
+│   └── ...                                  # Step 8 — Functional annotation
 │
 ├── containers/                        # Singularity/Apptainer images (.sif)
 ├── resources/                        # Bowtie2 index, reference genome, databases
@@ -360,10 +364,16 @@ shotgun_tenebrion/
     ├── metabat2_bins/                 # MAGs from MetaBAT2 + global depth matrix
     ├── semibin2_bins/                 # MAGs from SemiBin2
     ├── concoct_bins/                  # MAGs from CONCOCT
-    └── checkm2_qc/                    # Completeness/contamination reports, one subfolder per binner
-        ├── metabat2/                  # quality_report.tsv for MetaBAT2 MAGs
-        ├── semibin2/                  # quality_report.tsv for SemiBin2 MAGs
-        └── concoct/                   # quality_report.tsv for CONCOCT MAGs
+    ├── checkm2_qc/                    # Completeness/contamination reports, one subfolder per binner
+    │   ├── metabat2/                  # quality_report.tsv for MetaBAT2 MAGs
+    │   ├── semibin2/                  # quality_report.tsv for SemiBin2 MAGs
+    │   └── concoct/                   # quality_report.tsv for CONCOCT MAGs
+    ├── filtered_bins_metabat2/        # MetaBAT2 MAGs passing the CheckM2 quality filter
+    ├── filtered_bins_semibin2/        # SemiBin2 MAGs passing the CheckM2 quality filter
+    ├── filtered_bins_concoct/         # CONCOCT MAGs passing the CheckM2 quality filter
+    ├── gtdbtk_taxo_metabat2/          # GTDB-Tk taxonomy assignments for MetaBAT2 MAGs
+    ├── gtdbtk_taxo_semibin2/          # GTDB-Tk taxonomy assignments for SemiBin2 MAGs
+    └── gtdbtk_taxo_concoct/           # GTDB-Tk taxonomy assignments for CONCOCT MAGs
 ```
 
 > Note: unlike the 16S pipeline (fully local `data/` and `results/`), the shotgun pipeline uses an **S3 bucket** (`lmge-tenebrion`) as the primary storage for raw and cleaned reads, accessed via `rclone`.
@@ -387,12 +397,15 @@ sbatch bin/shotgun_concoct.slurm                # single job — binning with CO
 sbatch bin/pull_checkm2.slurm                   # once — pulls the CheckM2 image + downloads the ML database locally
 sbatch bin/build_checkm2_db.slurm               # once — re-uploads the CheckM2 database to S3, for cluster-wide reuse
 sbatch bin/shotgun_checkm2.slurm                # single job — QC of all 3 binners' MAGs (CheckM2)
-# Step 7 onward — to be completed
+sbatch bin/pull_gtdbtk.slurm                    # once — pulls the GTDB-Tk Apptainer image
+sbatch bin/build_gtdbtk.slurm                   # once — uploads the GTDB-Tk R214 database to S3
+sbatch bin/shotgun_gtdbtk.slurm                 # single job — taxonomic assignment of all 3 binners' MAGs (GTDB-Tk)
+# Step 8 onward — to be completed
 ```
 
 `shotgun_kraken2_bracken.slurm` (PlusPFP-only) is the earlier, single-database version of the profiling step; `shotgun_kraken2_bracken_addon.slurm` supersedes it once the insect addon database is available, since it reproduces the PlusPFP run and adds the addon pass in the same job.
 
-Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it auto-detects the sample list on S3 and resubmits itself with the correct array range. Unlike Steps 1–4, the three binning tools in Step 5 and the CheckM2 QC in Step 6 are **single jobs, not arrays** — they each process the whole catalog / all bins together in one run, since these steps inherently work across samples rather than per sample.
+Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it auto-detects the sample list on S3 and resubmits itself with the correct array range. Unlike Steps 1–4, the three binning tools in Step 5, the CheckM2 QC in Step 6, and GTDB-Tk in Step 7 are **single jobs, not arrays** — they each process the whole catalog / all bins together in one run, since these steps inherently work across samples rather than per sample.
 
 ---
 
@@ -524,7 +537,7 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 
 ### Step 6 — Bin quality control: CheckM2
 
-**Objective:** Assess the completeness and contamination of every MAG recovered by the three binners (Step 5), producing one comparable quality report per tool, so the best-performing binner(s) and individual bins can be selected before taxonomic/functional annotation.
+**Objective:** Assess the completeness and contamination of every MAG recovered by the three binners (Step 5), producing one comparable quality report per tool, used in Step 7 to decide which MAGs are worth a taxonomic assignment.
 
 **Image installation — `pull_checkm2.slurm`.** Pulls the CheckM2 1.0.2 Apptainer image from Biocontainers, then downloads CheckM2's Machine Learning database (`checkm2 database --download`, ~3 GB Diamond `.dmnd` file) directly into a local `databases/CheckM2_database/` folder.
 
@@ -546,7 +559,35 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 
 ---
 
-### Step 7 — Taxonomic & functional annotation *(to complete)*
+### Step 7 — Taxonomic assignment: GTDB-Tk
+
+**Objective:** Assign a taxonomy to the MAGs recovered by each of the three binners, using the completeness/contamination scores from Step 6 to decide which MAGs are passed to GTDB-Tk.
+
+**Image installation — `pull_gtdbtk.slurm`.** Pulls the GTDB-Tk 2.3.2 Apptainer image from the official `ecogenomic/gtdbtk` Docker repository.
+
+**Database upload — `build_gtdbtk.slurm`.** A one-off script: downloads the GTDB-Tk **R214** reference package (~85 GB, marker gene HMMs, reference tree, taxonomy and FastANI genome set) directly from the official GTDB mirror, extracts it, and uploads it to S3 (`ref/gtdbtk_r214/`) for reuse across cluster nodes.
+
+**Taxonomic assignment across all three binners — `shotgun_gtdbtk.slurm`.** A single SLURM job (no array) that processes all three bin sets sequentially, reusing one shared function (`run_gtdbtk_for_binner`) for MetaBAT2, SemiBin2 and CONCOCT:
+- *Database sync (once).* The R214 reference package is rclone-copied once from S3 into scratch at the start of the job (`trap cleanup EXIT`) and reused for all three GTDB-Tk runs — avoiding three redundant ~85 GB downloads.
+- *Quality-based pre-filter.* For each binner, the corresponding `checkm2_qc/<binner>/quality_report.tsv` (Step 6) is parsed to select which MAGs get a taxonomy attempt. The current threshold is **deliberately permissive** (Completeness ≥ 10%, Contamination < 100%) rather than the stricter MIMAG Medium-Quality standard (Comp ≥ 50% / Cont < 10%) — the goal here is exploratory: get a taxonomic signal for as many recovered bins as possible, including partial ones, rather than only the highest-confidence MAGs. Passing bins are copied into `filtered_bins_<binner>/`.
+- *Classification (GTDB-Tk `classify_wf`).* Each filtered bin set is run through `gtdbtk classify_wf --skip_ani_screen`, which places genomes in the GTDB reference tree via concatenated marker gene alignment and resolves species-level calls with FastANI where the tree placement alone isn't conclusive.
+- *Sequential execution.* The three runs happen one after another rather than in parallel: GTDB-Tk needs ~150 GB RAM and saturates the allocated CPUs, so running binners concurrently would exceed the job's 250 GB memory budget.
+- *Per-binner tolerance.* If a `quality_report.tsv` or bin directory is missing for a given binner (e.g. Step 5/6 not yet run for it), the script logs a warning and moves on to the next binner instead of aborting the whole job.
+
+**Outputs:**
+
+| Folder | Content |
+|---|---|
+| `filtered_bins_metabat2/` | MetaBAT2 MAGs passing the quality pre-filter |
+| `filtered_bins_semibin2/` | SemiBin2 MAGs passing the quality pre-filter |
+| `filtered_bins_concoct/` | CONCOCT MAGs passing the quality pre-filter |
+| `gtdbtk_taxo_metabat2/` | GTDB-Tk classification output for MetaBAT2 MAGs |
+| `gtdbtk_taxo_semibin2/` | GTDB-Tk classification output for SemiBin2 MAGs |
+| `gtdbtk_taxo_concoct/` | GTDB-Tk classification output for CONCOCT MAGs |
+
+---
+
+### Step 8 — Functional annotation *(to complete)*
 
 ---
 
@@ -558,35 +599,39 @@ Raw shotgun data (FASTQ, on S3)
         v
 [1] Host decontamination     Bowtie2 alignment vs T. molitor genome + samtools filtering (-f 12)
         |
-        +-------------------------------------------------+
-        |                                                 |
-        v                                                 v
-[2] Read-based profiling                            [3] Assembly   Per-sample de novo assembly (MEGAHIT, meta-sensitive)
-    PlusPFP DB   <--[2a] build_kraken2_db                 |
-    Insect Addon <--[2b] build_kraken_custom              |
-        |                                                 v
+        +-----------------------------------------------------+
+        |                                                     |
+        v                                                     v
+[2] Read-based profiling                                [3] Assembly       Per-sample de novo assembly (MEGAHIT, meta-sensitive)
+    PlusPFP DB   <--[2a] build_kraken2_db                     |
+    Insect Addon <--[2b] build_kraken_custom                  |
+        |                                                     v
         v                                         [4a] Catalog construction
     [2c/2d] Kraken2 + Bracken (per sample, dual-DB)    Concat + rename + length filter (>=1500bp)
         |                                              + MMseqs2 dereplication (95% id / 90% cov)
-        v                                                 |
-Taxonomic abundance tables                                v
-(PlusPFP + Addon)                                 [4b] Coverage profiling
+        v                                                     |
+Taxonomic abundance tables                                    v
+(PlusPFP + Addon)                                [4b] Coverage profiling
                                                     Per-sample read mapping (CoverM, minimap2-sr)
-                                                          |
-                                    +---------------------+---------------------+
-                                    |                     |                     |
-                                    v                     v                     v
-                              [5] MetaBAT2           [5] SemiBin2           [5] CONCOCT
-                              TNF + jgi depth        Self-supervised DL     Chunking + GMM
-                                    |                     |                     |
-                                    +---------------------+---------------------+
-                                                          |
-                                                          v
-                                                [6] CheckM2 (completeness/contamination)
-                                                    one quality_report.tsv per binner
-                                                          |
-                                                          v
-                                                [7] Taxonomic & functional annotation
+                                                              |
+                                        +---------------------+---------------------+
+                                        |                     |                     |
+                                        v                     v                     v
+                                  [5] MetaBAT2           [5] SemiBin2           [5] CONCOCT
+                                  TNF + jgi depth        Self-supervised DL     Chunking + GMM
+                                        |                     |                     |
+                                        +---------------------+---------------------+
+                                                              |
+                                                              v
+                                                    [6] CheckM2 (completeness/contamination)
+                                                        one quality_report.tsv per binner
+                                                              |
+                                                              v
+                                                    [7] GTDB-Tk (quality pre-filter + classify_wf)
+                                                        one taxonomy per binner, sequential runs
+                                                              |
+                                                              v
+                                                [8] Functional annotation
 ```
 
 ---
@@ -595,8 +640,9 @@ Taxonomic abundance tables                                v
 
 - HPC cluster with **SLURM** job scheduler
 - **rclone** configured with an S3 remote (`s3_uca`) pointing to the `lmge-tenebrion` bucket
-- **Apptainer/Singularity** available as a system binary, with the following images in `containers/`: `kraken2_bracken.sif` (shared with the 16S pipeline, `16_tenebrion/containers/`), `coverm_v0.7.0.sif`, `metabat2_v2.15.sif`, `concoct_1.1.0.sif`, `semibin_2.1.0.sif`, `checkm2_v1.0.2.sif`
+- **Apptainer/Singularity** available as a system binary, with the following images in `containers/`: `kraken2_bracken.sif` (shared with the 16S pipeline, `16_tenebrion/containers/`), `coverm_v0.7.0.sif`, `metabat2_v2.15.sif`, `concoct_1.1.0.sif`, `semibin_2.1.0.sif`, `checkm2_v1.0.2.sif`, `gtdbtk_v2.3.2.sif`
 - CheckM2 ML database (~3 GB `.dmnd` file) hosted on S3 (`ref/checkm2_db/`), built once via `build_checkm2_db.slurm`
+- GTDB-Tk R214 reference package (~85 GB) hosted on S3 (`ref/gtdbtk_r214/`), built once via `build_gtdbtk.slurm`
 - Modules available on the cluster: `rclone/1.55.1`, `bowtie2/2.3.4.3`, `gcc/8.1.0`, `samtools/1.16.1`, `megahit/1.2.9`, `MMseqs2/13-45111`
 - Reference genome of *Tenebrio molitor* (`GCA_963966145.1_icTenMoli1.1`) hosted on S3 (`ref/genome/`)
 - Kraken2 databases hosted on S3: PlusPFP (`ref/kraken2_pluspfp/`) and the custom Insect Addon (`ref/kraken2_insect_addon/`)
