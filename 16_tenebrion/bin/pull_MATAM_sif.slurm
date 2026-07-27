@@ -10,57 +10,59 @@
 #SBATCH --chdir=/home/thboutet/projets/16_tenebrion
 
 #######################################################################################
+
 #   AUTHORS :   Thomas BOUTET (IHP,LMGE)
 #   DATE    :   25 - 02 - 2026
 #   SCRIPT  :   pull_MATAM_sif.slurm
+
 #######################################################################################
 
-# sbatch /bin/pull_MATAM_sif.slurm
+# sbatch bin/pull_MATAM_sif.slurm
 
 ######################################################################################
 
 set -euo pipefail
 
-# Chargement des modules
+# Load modules
 module purge
 module load gcc/4.8.4
 module load pigz 2>/dev/null || true
 
-# Définition de l'arborescence du projet
+# Definition of the project directory tree
 PROJECT_DIR="${SLURM_SUBMIT_DIR}"
 LOG_DIR="${PROJECT_DIR}/log"
 CONTAINERS_DIR="${PROJECT_DIR}/containers"
 RES_DIR="${PROJECT_DIR}/resources"
 
-# Création silencieuse des dossiers nécessaires
+# Silently create the necessary folders
 mkdir -p "${LOG_DIR}" "${CONTAINERS_DIR}" "${RES_DIR}"
 
-# Localisation de Singularity. Essentiel car les chemins diffèrent selon les clusters.
+# Locate Singularity. Essential because paths differ from cluster to cluster.
 SINGULARITY="/usr/bin/singularity"
 if [ ! -x "${SINGULARITY}" ]; then
     SINGULARITY="$(command -v singularity || true)"
 fi
 if [ -z "${SINGULARITY}" ] || [ ! -x "${SINGULARITY}" ]; then
-    echo "ERROR: singularity/apptainer introuvable" >&2
+    echo "ERROR: singularity/apptainer not found" >&2
     exit 1
 fi
 
-# Fonction de vérification des dépendances système
+# Function to check system dependencies
 need_bin() {
     if ! command -v "$1" >/dev/null 2>&1; then
-        echo "ERROR: binaire manquant: $1" >&2
+        echo "ERROR: missing binary: $1" >&2
         exit 1
     fi
 }
 
-# On s'assure que les outils de manipulation d'archives sont présents
+# Make sure the archive-handling tools are present
 need_bin awk
 need_bin sed
 need_bin tar
 need_bin bzip2
 need_bin df
 
-# Détection de l'outil de téléchargement disponible (curl ou wget)
+# Detect the available download tool (curl or wget)
 HAVE_CURL="FALSE"
 HAVE_WGET="FALSE"
 if command -v curl >/dev/null 2>&1; then
@@ -70,39 +72,39 @@ if command -v wget >/dev/null 2>&1; then
     HAVE_WGET="TRUE"
 fi
 if [ "${HAVE_CURL}" = "FALSE" ] && [ "${HAVE_WGET}" = "FALSE" ]; then
-    echo "ERROR: ni curl ni wget disponible pour télécharger la DB" >&2
+    echo "ERROR: neither curl nor wget available to download the DB" >&2
     exit 1
 fi
 
-################################################################################
-#   SCRATCH (TMP + CACHE) + CLEANUP robuste
-################################################################################
+# =====================================================================
+#   SCRATCH (TMP + CACHE) + robust CLEANUP
+# =====================================================================
 
-# Définition d'un espace temporaire sur le scratch du cluster.
-# Très important : Singularity a besoin de beaucoup d'espace cache pour "builder" 
-# des images Docker en .sif. Si on le laisse faire dans le /home, ça sature le quota.
+# Definition of a temporary space on the cluster's scratch storage.
+# Very important: Singularity needs a lot of cache space to "build"
+# Docker images into .sif files. If left to do so in /home, it fills up the quota.
 SCRATCH_BASE="/storage/scratch/${USER}"
 SCRATCH_JOB="${SCRATCH_BASE}/install_matam_db_${SLURM_JOB_ID}"
 SCRATCH_TMP="${SCRATCH_JOB}/tmp"
 mkdir -p "${SCRATCH_JOB}" "${SCRATCH_TMP}"
 
-# Redirection des variables d'environnement de Singularity vers notre scratch
+# Redirect Singularity's environment variables to our scratch space
 export SINGULARITY_TMPDIR="${SCRATCH_TMP}"
 export SINGULARITY_CACHEDIR="${SCRATCH_BASE}/singularity_cache"
 mkdir -p "${SINGULARITY_CACHEDIR}" 2>/dev/null || true
 
-# Le "trap" est une sécurité : cette fonction s'exécutera automatiquement à la fin du script,
-# même s'il plante au milieu, garantissant que l'on ne laisse pas de déchets sur le scratch.
+# The "trap" is a safeguard: this function runs automatically at the end of the script,
+# even if it crashes partway through, ensuring no leftover data is left on the scratch space.
 cleanup() {
     rm -rf "${SCRATCH_JOB}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-################################################################################
+# =====================================================================
 #   LOG HEADER
-################################################################################
+# =====================================================================
 
-# Traçabilité des versions et de l'environnement d'exécution
+# Traceability of versions and the execution environment
 echo "START -- $(date)"
 echo "HOSTNAME -- $(hostname)"
 echo "PROJECT_DIR -- ${PROJECT_DIR}"
@@ -116,9 +118,9 @@ echo "HOST_HAVE_WGET -- ${HAVE_WGET}"
 df -h "${SCRATCH_BASE}" || true
 echo
 
-################################################################################
-#   1) BUILD MATAM IMAGE (depuis biocontainers)
-################################################################################
+# =====================================================================
+#  1) BUILD MATAM IMAGE (from biocontainers)
+# =====================================================================
 
 MATAM_VERSION="1.6.2"
 MATAM_DOCKER_IMAGE="docker://quay.io/biocontainers/matam:${MATAM_VERSION}--haf24da9_0"
@@ -126,19 +128,19 @@ MATAM_DOCKER_IMAGE="docker://quay.io/biocontainers/matam:${MATAM_VERSION}--haf24
 MATAM_SIF="${CONTAINERS_DIR}/matam.sif"
 MATAM_TMP="${MATAM_SIF}.tmp"
 
-echo "################################################################################"
+echo "---------------------------------------------------------------------"
 echo "# 1) BUILD MATAM IMAGE"
-echo "################################################################################"
+echo "---------------------------------------------------------------------"
 echo "MATAM_VERSION -- ${MATAM_VERSION}"
 echo "MATAM_DOCKER_IMAGE -- ${MATAM_DOCKER_IMAGE}"
 echo "MATAM_SIF -- ${MATAM_SIF}"
 
-# Si l'image existe déjà, on gagne du temps et on passe à la suite
+# If the image already exists, save time and move on
 if [ -s "${MATAM_SIF}" ]; then
-    echo "MATAM_SIF -- déjà présent -> skip build"
+    echo "MATAM_SIF -- already present -> skip build"
     ls -lh "${MATAM_SIF}" | sed 's/^/   /'
 else
-    # Construction de l'image Singularity à partir de la source Docker
+    # Build the Singularity image from the Docker source
     rm -f "${MATAM_TMP}"
     echo "BUILD -- ${SINGULARITY} build ${MATAM_TMP} ${MATAM_DOCKER_IMAGE}"
     ${SINGULARITY} build "${MATAM_TMP}" "${MATAM_DOCKER_IMAGE}"
@@ -148,7 +150,7 @@ else
 fi
 echo
 
-# Vérification rapide ("sanity check") de la présence des binaires clés dans le conteneur
+# Quick "sanity check" that the key binaries are present in the container
 echo "CHECK MATAM BINARIES"
 ${SINGULARITY} exec --cleanenv "${MATAM_SIF}" bash -lc '
     set -e
@@ -161,9 +163,10 @@ ${SINGULARITY} exec --cleanenv "${MATAM_SIF}" bash -lc '
 '
 echo
 
-################################################################################
-#   2) GET DB (download multi-sources + validate + extract)
-################################################################################
+# =====================================================================
+# 2) GET DB (multi-source download + validate + extract)
+# =====================================================================
+
 
 MATAM_DB_DIR="${RES_DIR}/matam_db"
 MATAM_DB_PREFIX="${MATAM_DB_DIR}/SILVA_128_SSURef_NR95"
@@ -172,21 +175,21 @@ MATAM_DB_ARCHIVE="${MATAM_DB_DIR}/SILVA_128_SSURef_NR95.tar.bz2"
 
 mkdir -p "${MATAM_DB_DIR}"
 
-echo "################################################################################"
+echo "---------------------------------------------------------------------"
 echo "# 2) GET DB"
-echo "################################################################################"
+echo "---------------------------------------------------------------------"
 echo "MATAM_DB_DIR -- ${MATAM_DB_DIR}"
 echo "MATAM_DB_SENTINEL -- ${MATAM_DB_SENTINEL}"
 
-# Si le fichier fasta (sentinelle) est là, la DB est déjà extraite
+# If the fasta (sentinel) file is present, the DB has already been extracted
 if [ -f "${MATAM_DB_SENTINEL}" ]; then
     echo "DB -- déjà présente (sentinel) -> skip"
     ls -lh "${MATAM_DB_DIR}" | sed 's/^/    /'
     echo
 else
-    echo "DB -- absente -> download + validate + extract"
+    echo "DB -- missing -> download + validate + extract"
 
-    # Liste de miroirs. Les liens bioinfo cassent souvent, on prévoit un fallback.
+    # List of mirrors. Bioinfo links break often, so we provide a fallback.
     URLS=(
         "http://bioinfo.univ-lille.fr/matam/SILVA_128_SSURef_NR95.tar.bz2"
         "https://bioinfo.univ-lille.fr/matam/SILVA_128_SSURef_NR95.tar.bz2"
@@ -195,7 +198,7 @@ else
     download_ok="FALSE"
     rm -f "${MATAM_DB_ARCHIVE}" "${MATAM_DB_ARCHIVE}.part" 2>/dev/null || true
 
-    # Tentative de téléchargement en bouclant sur les URL disponibles
+    # Attempt download by looping over the available URLs
     for url in "${URLS[@]}"; do
         echo "TRY -- ${url}"
         if [ "${HAVE_CURL}" = "TRUE" ]; then
@@ -214,20 +217,19 @@ else
         fi
     done
 
-    # Si tous les miroirs échouent, on arrête proprement
+    # If all mirrors fail, stop cleanly
     if [ "${download_ok}" != "TRUE" ]; then
-        echo "ERROR: impossible de télécharger la DB MATAM (proxy/URL)." >&2
-        echo "Astuce: télécharge une fois depuis un noeud qui a internet, puis relance." >&2
+        echo "ERROR: unable to download the MATAM DB (proxy/URL)." >&2
         exit 1
     fi
 
     echo "DOWNLOADED -- ${MATAM_DB_ARCHIVE}"
     ls -lh "${MATAM_DB_ARCHIVE}" | sed 's/^/    /'
 
-    # Vérification de l'intégrité de l'archive (évite de bloquer sur une archive corrompue)
+    # Check the archive's integrity (avoids getting stuck on a corrupted archive)
     echo "VALIDATE -- bzip2 -t"
     if ! bzip2 -t "${MATAM_DB_ARCHIVE}"; then
-        echo "ERROR: archive bz2 invalide (download corrompu/proxy HTML)" >&2
+        echo "ERROR: invalid bz2 archive (download corrupted/HTML proxy)" >&2
         head -c 200 "${MATAM_DB_ARCHIVE}" | sed 's/^/   /'; echo >&2
         exit 1
     fi
@@ -236,9 +238,9 @@ else
     echo "EXTRACT -- tar -xjf ${MATAM_DB_ARCHIVE}"
     tar -xjf "${MATAM_DB_ARCHIVE}" -C "${MATAM_DB_DIR}"
 
-    # Vérification que le fichier cible est bien sorti de l'archive
+    # Check that the target file was indeed extracted from the archive
     if [ ! -f "${MATAM_DB_SENTINEL}" ]; then
-        echo "ERROR: extraction OK mais sentinel introuvable: ${MATAM_DB_SENTINEL}" >&2
+        echo "ERROR: extraction OK but sentinel not found: ${MATAM_DB_SENTINEL}" >&2
         echo "Contenu MATAM_DB_DIR:" >&2
         ls -lh "${MATAM_DB_DIR}" >&2 || true
         exit 1
@@ -249,30 +251,30 @@ else
     echo
 fi
 
-################################################################################
-#   3) INDEX DB (nécessite indexdb_rna) - multi-stratégies
-################################################################################
+# =====================================================================
+#  3) INDEX DB (requires indexdb_rna) - multi-strategy
+# =====================================================================
 
-echo "################################################################################"
+echo "---------------------------------------------------------------------"
 echo "# 3) INDEX DB"
-echo "################################################################################"
+echo "---------------------------------------------------------------------"
 
-# Fonction pour vérifier si l'indexation a déjà été faite (présence des fichiers générés par SortMeRNA)
+# Function to check if the indexing has already been done
 index_present() {
     ls "${MATAM_DB_PREFIX}".* 2>/dev/null | grep -Ev '\.(fasta|tab|bz2)$' >/dev/null 2>&1
 }
 
 if index_present; then
-    echo "INDEX -- déjà présent -> skip"
+    echo "INDEX -- already present -> skip"
     ls -lh "${MATAM_DB_DIR}" | sed 's/^/    /'
     echo
 else
-    echo "INDEX -- absent -> tentative d'indexation"
+    echo "INDEX -- missing -> try to index"
     echo "METHOD_A (MATAM image) -- indexdb_rna"
     
-    # Stratégie A : On tente d'utiliser l'indexeur directement inclus dans l'image MATAM
+    # METHOD A : try to use the indexer directly included in the MATAM image.
     if ${SINGULARITY} exec --cleanenv "${MATAM_SIF}" bash -lc 'command -v indexdb_rna >/dev/null 2>&1'; then
-        echo "indexdb_rna trouvé dans MATAM image -> indexation"
+        echo "indexdb_rna found in MATAM image -> indexation"
         ${SINGULARITY} exec --cleanenv \
             -B "${MATAM_DB_DIR}:${MATAM_DB_DIR}" \
             "${MATAM_SIF}" bash -lc "
@@ -288,11 +290,11 @@ else
         ls -lh "${MATAM_DB_DIR}" | sed 's/^/    /'
         echo
     else
-        # Stratégie B : Souvent, les conteneurs MATAM n'incluent pas le binaire 'indexdb_rna' de SortMeRNA.
-        # On contourne le problème en téléchargeant dynamiquement un conteneur SortMeRNA dédié pour faire l'indexation.
-        echo "METHOD_B -- essayer une image sortmerna qui fournit indexdb_rna"
+        # METHOD B: Often, MATAM containers do not include the SortMeRNA 'indexdb_rna' binary.
+        # Bypass the problem by dynamically downloading a dedicated SortMeRNA container for indexing.
+        echo "METHOD_B -- try a sortmerna image that provides indexdb_rna"
         
-        # Liste de tags connus de SortMeRNA v2.1b (version requise par MATAM)
+        # List of known tags from SortMeRNA v2.1b (version requise par MATAM)
         SORTMERNA_TRIES=(
             "docker://quay.io/biocontainers/sortmerna:2.1b--0"
             "docker://quay.io/biocontainers/sortmerna:2.1b--h9f5acd7_0"
@@ -303,7 +305,7 @@ else
         SORT_SIF="${CONTAINERS_DIR}/sortmerna_indexer.sif"
         rm -f "${SORT_SIF}.tmp" 2>/dev/null || true
 
-        # Boucle d'essai pour trouver un conteneur fonctionnel
+        # Test loop to find a functional container
         got_indexer="FALSE"
         for img in "${SORTMERNA_TRIES[@]}"; do
             echo "TRY SORTMERNA IMAGE -- ${img}"
@@ -314,24 +316,22 @@ else
                     echo "OK -- indexdb_rna présent dans ${SORT_SIF}"
                     break
                 else
-                    echo "NO -- pas de indexdb_rna dans cette image"
+                    echo "NO -- no indexdb_rna in this image"
                     rm -f "${SORT_SIF}" 2>/dev/null || true
                 fi
             else
-                echo "FAIL -- build impossible (tag inexistant/proxy)"
+                echo "FAIL -- build impossible (tag not existing/proxy)"
                 rm -f "${SORT_SIF}.tmp" 2>/dev/null || true
             fi
         done
 
         if [ "${got_indexer}" != "TRUE" ]; then
-            echo "ERROR: impossible de trouver une image sortmerna fournissant indexdb_rna." >&2
-            echo "SOLUTION: soit trouver le bon tag biocontainers sortmerna 2.1b qui inclut indexdb_rna," >&2
-            echo "         soit on construit un conteneur indexer depuis source (sans conda)." >&2
+            echo "ERROR: Unable to find an image sortmerna providing indexdb_rna ." >&2
             exit 1
         fi
 
-        # Indexation finale avec le conteneur de secours
-        echo "INDEXATION via sortmerna_indexer.sif"
+        # Final indexing with the backup container
+        echo "INDEXATION with sortmerna_indexer.sif"
         ${SINGULARITY} exec --cleanenv \
             -B "${MATAM_DB_DIR}:${MATAM_DB_DIR}" \
             "${SORT_SIF}" bash -lc "
@@ -340,7 +340,7 @@ else
             "
 
         if ! index_present; then
-            echo "ERROR: indexdb_rna exécuté mais index non détecté. Vérifie les fichiers générés." >&2
+            echo "ERROR: indexdb_rna executed but index not detected." >&2
             ls -lh "${MATAM_DB_DIR}" >&2 || true
             exit 1
         fi
