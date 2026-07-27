@@ -10,47 +10,49 @@
 #SBATCH --chdir=/home/thboutet/projets/16_tenebrion
 
 #######################################################################################
+
 #   AUTHORS :   Thomas BOUTET (IHP, LMGE)
 #   DATE    :   03 - 03 - 2026
 #   SCRIPT  :   16S_MATAM.slurm
 #   TOOLS   :   USEARCH 9.2.64 ; MATAM 1.6.1 ; Salmon 1.10.2 (via Conda)
 #
-#   GOAL    :   Production massive sur 44 échantillons (Pipeline Hybride complet).
-#               - Nettoyage Python (Filtrage Qualité & Rognage, lecture streamée)
-#               - Déréplication USEARCH (Accélération algorithmique)
-#               - Assemblage MATAM (Reconstruction 16S de novo, bypass LCA)
-#               - Quantification Salmon (Algorithme EM probabiliste, mode offline)
+#   GOAL    :   Massive production run on 44 samples (full Hybrid Pipeline).
+#               - Python cleaning (Quality filtering & trimming, streamed reading)
+#               - USEARCH dereplication (Algorithmic acceleration)
+#               - MATAM assembly (de novo 16S reconstruction, LCA bypass)
+#               - Salmon quantification (Probabilistic EM algorithm, offline mode)
+
 #######################################################################################
 
-# sbatch /bin/16S_MATAM.slurm
+# sbatch bin/16S_MATAM.slurm
 
 ######################################################################################
 set -uo pipefail
 
 # =====================================================================
-# INITIALISATION ET CHARGEMENT DES OUTILS
+# INITIALIZATION AND TOOL LOADING
 # =====================================================================
 echo "====================================================================="
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] DÉMARRAGE DU PIPELINE DE PRODUCTION"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] START UP OF THE PIPELINE"
 echo "Job Master ID  : ${SLURM_ARRAY_JOB_ID:-${SLURM_JOB_ID}}"
 echo "Task Array ID  : ${SLURM_ARRAY_TASK_ID:-N/A}"
 echo "Nœud de calcul : ${SLURMD_NODENAME}"
 echo "====================================================================="
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] Purge et chargement des modules..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] Purging and loading modules..."
 module purge
 module load usearch/9.2.64 2>/dev/null || true
 
-# Activation de l'environnement Conda (stabilité des librairies)
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] Activation de l'environnement Conda (Salmon)..."
+# Activate the Conda environment (library stability)
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] Enabling the Conda Environment (Salmon) ..."
 module load conda/23.3.1
 eval "$(conda shell.bash hook)"
 conda activate /home/thboutet/projets/16_tenebrion/resources/env_salmon
 
 # =====================================================================
-# CONFIGURATION DES CHEMINS ET VARIABLES
+# PATH AND VARIABLE CONFIGURATION
 # =====================================================================
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] Définition des répertoires du projet..."
+
 PROJECT_DIR="${SLURM_SUBMIT_DIR}"
 RAW_DIR="${PROJECT_DIR}/data/raw"
 OUT_BASE="${PROJECT_DIR}/results/PRODUCTION_HYBRID"
@@ -63,18 +65,18 @@ SINGULARITY="/usr/bin/singularity"
 THREADS="${SLURM_CPUS_PER_TASK}"
 
 # =====================================================================
-# GESTION DE L'ARRAY SLURM (DÉTECTION AUTOMATIQUE DES 44 FICHIERS)
+# SLURM ARRAY MANAGEMENT 
 # =====================================================================
 mapfile -t SAMPLES < <(ls "${RAW_DIR}"/*_R1.fastq.gz | xargs -n 1 basename | sed 's/_R1.fastq.gz//' | sort)
 
-# Lancement automatique de l'Array si le script est exécuté sans --array
+# Automatic Array launch if the script is run without --array
 if [ -z "${SLURM_ARRAY_TASK_ID:-}" ]; then
     N_SAMPLES=${#SAMPLES[@]}
     echo "---------------------------------------------------------------------"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ARRAY] Détection de ${N_SAMPLES} échantillons."
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ARRAY] Soumission du job Array (10 tâches max en parallèle)..."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ARRAY] Detection of ${N_SAMPLES} samples."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ARRAY] Submission of the Array job (10 tasks max in parallel)..."
     sbatch --array=0-$((N_SAMPLES - 1))%11 "$0"
-    echo "====================================================================="
+    echo "---------------------------------------------------------------------"
     exit 0
 fi
 
@@ -83,9 +85,9 @@ OUT_DIR="${OUT_BASE}/${SAMPLE}"
 mkdir -p "${OUT_DIR}" "log"
 
 # =====================================================================
-# GESTION DU SCRATCH LOCAL (ESPACE DE TRAVAIL)
+# LOCAL SCRATCH MANAGEMENT (WORKING SPACE)
 # =====================================================================
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] Configuration de l'espace Scratch local..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INIT] Configure Local Scratch Space..."
 JOB_SCRATCH="/storage/scratch/${USER}/prod_hyb_${SAMPLE}_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
 WORKDIR="${JOB_SCRATCH}/work"
 TMP_WORK="${JOB_SCRATCH}/tmp"
@@ -96,14 +98,14 @@ export SINGULARITY_TMPDIR="${TMP_WORK}"
 
 cleanup() {
     echo "---------------------------------------------------------------------"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [CLEANUP] Nettoyage du scratch de calcul..."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [CLEANUP] Cleaning the scratch..."
     rm -rf "${JOB_SCRATCH}" 2>/dev/null || true
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [FIN] Tâche terminée pour ${SAMPLE}."
-    echo "====================================================================="
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [END] Task completed for ${SAMPLE}."
+    echo "---------------------------------------------------------------------"
 }
 trap cleanup EXIT
 
-# Fonction d'encapsulation pour Singularity (MATAM / Python)
+# Wrapper function for Singularity (MATAM / Python)
 matam_exec() {
     "${SINGULARITY}" exec --cleanenv \
         --env "LC_ALL=C" --env "LANG=C" --env "TMPDIR=/work/tmp" \
@@ -116,10 +118,10 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] DÉBUT DU TRAITEMENT : ${SAMPLE}"
 echo "====================================================================="
 
 # =====================================================================
-# ÉTAPE 1 : NETTOYAGE EXACT (Lecture en flux compressé)
+# STEP 1: EXACT CLEANING 
 # =====================================================================
 echo "---------------------------------------------------------------------"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 1] Nettoyage Python (Q>30, L>50, Clip=15)..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 1] Python Cleanup (Q>30, L>50, Clip=15)..."
 
 CLIPPED_FASTQ_CONT="/work/${SAMPLE}_clipped.fastq" 
 PY_CLIP="${WORKDIR}/clip_fastq_strict.py"
@@ -143,25 +145,25 @@ with gzip.open(inp, "rt", encoding="utf-8", errors="replace") as fi, open(outp, 
 PY
 
 matam_exec "python /work/clip_fastq_strict.py '${RAW_DIR}/${SAMPLE}_R1.fastq.gz' '${CLIPPED_FASTQ_CONT}'"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 1] Nettoyage terminé."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 1] Cleaning completed."
 
 # =====================================================================
-# ÉTAPE 2 : DÉRÉPLICATION
+# STEP 2: DEREPLICATION
 # =====================================================================
 echo "---------------------------------------------------------------------"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 2] Déréplication USEARCH (Compression d'information)..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 2] USEARCH Dereplication..."
 
 DEREP_FASTQ_WORK="${WORKDIR}/${SAMPLE}_derep.fastq"
 DEREP_FASTQ_CONT="/work/${SAMPLE}_derep.fastq"
 
 usearch -fastx_uniques "${WORKDIR}/${SAMPLE}_clipped.fastq" -fastqout "${DEREP_FASTQ_WORK}" -sizeout -quiet
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 2] Déréplication terminée."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 2] Dereplication completed."
 
 # =====================================================================
-# ÉTAPE 3 : ASSEMBLAGE MATAM
+# STEP 3: MATAM ASSEMBLY
 # =====================================================================
 echo "---------------------------------------------------------------------"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 3] Assemblage MATAM (Bypass LCA par défaut)..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 3] MATAM Assembly..."
 
 MATAM_CONT_OUT="/work/02_matam"
 MATAM_SCRATCH_OUT="${WORKDIR}/02_matam"
@@ -178,32 +180,32 @@ matam_assembly.py \
     --input_fastq '${DEREP_FASTQ_CONT}' \
 "
 SCAFFOLDS_FA="${MATAM_SCRATCH_OUT}/final_assembly.fa"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 3] Assemblage terminé."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 3] Assembly completed."
 
 # =====================================================================
-# ÉTAPE 4 : QUANTIFICATION SALMON
+# STEP 4: SALMON QUANTIFICATION
 # =====================================================================
 
 echo "---------------------------------------------------------------------"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 4] Quantification Salmon (Abondance algorithmique EM)..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 4] Salmon Quantification Salmon..."
 
 SALMON_INDEX="${WORKDIR}/salmon_index"
 SALMON_OUT="${WORKDIR}/salmon_quant"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 4.1] Construction de l'index des scaffolds..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 4.1] Building the index of scaffolds..."
 salmon index -t "${SCAFFOLDS_FA}" -i "${SALMON_INDEX}" -k 31 --no-version-check
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 4.2] Quantification (Mapping-back)..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 4.2] Quantification (Mapping-back)..."
 salmon quant -i "${SALMON_INDEX}" -l U -r "${WORKDIR}/${SAMPLE}_clipped.fastq" -p "${THREADS}" --validateMappings --no-version-check -o "${SALMON_OUT}" --quiet
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 4] Quantification terminée."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [STEP 4] Quantification completed."
 
 # =====================================================================
-# ÉTAPE 5 : RAPATRIEMENT DES DONNÉES
+# STEP 5: DATA RETRIEVAL
 # =====================================================================
 echo "---------------------------------------------------------------------"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 5] Rapatriement des livrables finaux..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 5] Data retrieval..."
 
 cp -L "${SCAFFOLDS_FA}" "${OUT_DIR}/${SAMPLE}_scaffolds.fasta"
 cp -L "${SALMON_OUT}/quant.sf" "${OUT_DIR}/${SAMPLE}_abundance_salmon.tsv"
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 5] Livrables copiés avec succès dans : ${OUT_DIR}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 5] Data successfully copied in: ${OUT_DIR}"
