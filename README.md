@@ -304,17 +304,19 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | rclone | 1.55.1 | SLURM module | Data transfer to/from S3 storage |
 | Bowtie2 | 2.3.4.3 | SLURM module | Host read alignment (decontamination) |
 | samtools | 1.16.1 | SLURM module | BAM filtering, sorting, FASTQ extraction |
-| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken and CoverM containers |
+| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken, CoverM and binning containers |
 | Kraken2 | *(per container image)* | Apptainer image | K-mer-based taxonomic assignment of paired reads |
 | Bracken | *(per container image)* | Apptainer image | Bayesian re-estimation of species-level abundances from Kraken2 reports |
 | NCBI Datasets CLI | v2 (linux-amd64) | Downloaded binary | Genome retrieval for the custom insect-focused Kraken2 addon database |
 | MEGAHIT | 1.2.9 | SLURM module | De novo metagenomic assembly, run independently per sample (`--presets meta-sensitive`) |
 | MMseqs2 | 13-45111 | SLURM module | Contig catalog construction via linear-time clustering (dereplication) |
 | CoverM | 0.7.0 | Apptainer image | Read mapping (minimap2-sr) and coverage/abundance quantification against the non-redundant catalog |
-| *(binning tool)* | *TBD* | *TBD* | Genome binning (MAGs recovery) |
+| MetaBAT2 | 2.15 | Apptainer image | Genome binning via TNF composition + differential coverage (`jgi_summarize_bam_contig_depths`) |
+| SemiBin2 | 2.1.0 | Apptainer image | Genome binning via self-supervised deep learning (`single_easy_bin`) |
+| CONCOCT | 1.1.0 | Apptainer image | Genome binning via Gaussian mixture clustering on chunked contigs |
 | *(annotation tool)* | *TBD* | *TBD* | Functional/taxonomic annotation of bins |
 
-*(binning / annotation rows to complete once the corresponding scripts are added)*
+*(annotation row to complete once the corresponding scripts are added)*
 
 ---
 
@@ -329,9 +331,15 @@ shotgun_tenebrion/
 │   ├── shotgun_kraken2_bracken.slurm        # Step 2c — Kraken2/Bracken profiling (PlusPFP only)
 │   ├── shotgun_kraken2_bracken_addon.slurm  # Step 2d — Kraken2/Bracken profiling (PlusPFP + Addon, dual)
 │   ├── shotgun_megahit_full.slurm           # Step 3 — Per-sample de novo assembly (MEGAHIT)
-│   ├── ...                                  # Step 4 — Binning
-│   └── ...                                  # Step 5 — Bin annotation
+│   ├── pull_coverm.slurm                    # Step 4a — Install the CoverM Apptainer image
+│   ├── shotgun_coverm.slurm                 # Step 4b — Non-redundant catalog + coverage profiling
+│   ├── pull_binners.slurm                   # Step 5a — Install the MetaBAT2 + CONCOCT + SemiBin2 Apptainer images
+│   ├── shotgun_metabat2.slurm               # Step 5b — Binning with MetaBAT2
+│   ├── shotgun_semibin2.slurm               # Step 5c — Binning with SemiBin2
+│   ├── shotgun_concoct.slurm                # Step 5d — Binning with CONCOCT
+│   └── ...                                  # Step 6 — Bin annotation
 │
+├── containers/                        # Singularity/Apptainer images (.sif)
 ├── resources/                        # Bowtie2 index, reference genome, databases
 ├── data/
 │   └── raw/                          # Raw files (mirrored on S3: shotgun_bruts/)
@@ -342,7 +350,12 @@ shotgun_tenebrion/
     ├── bracken_pluspfp/               # Bracken species-level abundance tables (PlusPFP)
     ├── kraken2_addon/                 # Kraken2 reports vs. custom Insect Addon database
     ├── bracken_addon/                 # Bracken species-level abundance tables (Addon)
-    └── assembly_megahit/              # Per-sample contigs + MEGAHIT logs
+    ├── assembly_megahit/              # Per-sample contigs + MEGAHIT logs
+    ├── global_catalog/                # Non-redundant contig catalog (MMseqs2)
+    ├── coverm/                        # Per-sample coverage tables + cached BAMs
+    ├── metabat2_bins/                 # MAGs from MetaBAT2 + global depth matrix
+    ├── semibin2_bins/                 # MAGs from SemiBin2
+    └── concoct_bins/                  # MAGs from CONCOCT
 ```
 
 > Note: unlike the 16S pipeline (fully local `data/` and `results/`), the shotgun pipeline uses an **S3 bucket** (`lmge-tenebrion`) as the primary storage for raw and cleaned reads, accessed via `rclone`.
@@ -359,12 +372,16 @@ sbatch bin/shotgun_kraken2_bracken_addon.slurm  # per-sample array — dual-data
 sbatch bin/shotgun_megahit_full.slurm           # per-sample array — de novo assembly (MEGAHIT)
 sbatch bin/pull_coverm.slurm                    # once — pulls the CoverM Apptainer image
 sbatch bin/shotgun_coverm.slurm                 # per-sample array — catalog build (leader task) + coverage profiling
-# Step 5 onward — to be completed
+sbatch bin/pull_binners.slurm                   # once — pulls the MetaBAT2 + CONCOCT + SemiBin2 Apptainer images
+sbatch bin/shotgun_metabat2.slurm               # single job — binning with MetaBAT2
+sbatch bin/shotgun_semibin2.slurm               # single job — binning with SemiBin2
+sbatch bin/shotgun_concoct.slurm                # single job — binning with CONCOCT
+# Step 6 onward — to be completed
 ```
 
 `shotgun_kraken2_bracken.slurm` (PlusPFP-only) is the earlier, single-database version of the profiling step; `shotgun_kraken2_bracken_addon.slurm` supersedes it once the insect addon database is available, since it reproduces the PlusPFP run and adds the addon pass in the same job.
 
-Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it auto-detects the sample list on S3 and resubmits itself with the correct array range.
+Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it auto-detects the sample list on S3 and resubmits itself with the correct array range. Unlike Steps 1–4, the three binning tools in Step 5 are **single jobs, not arrays** — they each process the whole contig catalog and all per-sample BAMs together in one run, since binning inherently needs the full cross-sample coverage matrix at once.
 
 ---
 
@@ -457,7 +474,42 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 
 ---
 
-### Step 5 — Binning *(to complete)*
+### Step 5 — Binning: MetaBAT2, SemiBin2 & CONCOCT
+
+**Objective:** From the non-redundant contig catalog (Step 4) and its per-sample coverage BAMs, recover draft genomes (MAGs) using three independent binning strategies run in parallel, to be cross-compared and quality-checked downstream (Step 6).
+
+**Image installation — `pull_binners.slurm`.** Pulls all three binning Apptainer images in a single job: MetaBAT2 2.15, CONCOCT 1.1.0, and SemiBin2 2.1.0, all from Biocontainers. The Apptainer cache/tmp is redirected to scratch and removed once every image is downloaded and version-tested.
+
+**MetaBAT2 — `shotgun_metabat2.slurm`.** A single SLURM job (no array) processing the whole catalog and all per-sample BAMs at once:
+- *Depth matrix.* `jgi_summarize_bam_contig_depths` combines every sorted BAM from `results/coverm/bams/` into one global coverage matrix (`global_depth.txt`); BAMs are listed alphabetically first so the column order stays consistent across reruns.
+- *Catalog re-filter.* The catalog is filtered again to ≥1,500 bp (`catalog_min1500.fasta`) immediately before binning — a defensive step, since the catalog from Step 4 is already filtered at the same threshold, but MetaBAT2 requires the guarantee at read time and won't run on a file containing shorter contigs.
+- *Binning.* `metabat2` clusters contigs by TNF composition + differential coverage, with the minimum contig size (`-m 1500`) matching the pre-filter.
+- *Output:* one `bin.<N>.fa` file per recovered MAG in `results/metabat2_bins/`.
+
+**SemiBin2 — `shotgun_semibin2.slurm`.** A single SLURM job using the self-supervised deep-learning binning mode (`single_easy_bin`):
+- *Pre-flight check.* Confirms every BAM in `results/coverm/bams/` has a matching `.bai` index (mandatory for SemiBin2), aborting with an explicit error otherwise.
+- *Catalog re-filter.* Same ≥1,500 bp defensive filter as MetaBAT2, cached (`catalog_min1500.fasta`) so it isn't recomputed on reruns.
+- *Binning.* `SemiBin2 single_easy_bin` jointly learns from k-mer composition and multi-sample coverage via a self-supervised neural network, instead of the manual TNF/coverage heuristics used by MetaBAT2 — generally better suited to separating closely related strains.
+- *Output:* bins are copied from SemiBin2's `output_bins/` into a standardised `results/semibin2_bins/bins_fasta/` folder.
+
+**CONCOCT — `shotgun_concoct.slurm`.** A single SLURM job implementing CONCOCT's full multi-step workflow:
+- *Pre-flight check & catalog re-filter:* same BAM index check and ≥1,500 bp filter as above.
+- *Contig chunking* (`cut_up_fasta.py`, 10 kb windows, `--merge_last`): CONCOCT clusters fixed-size fragments rather than full-length contigs, to stabilise its Gaussian mixture model.
+- *Coverage table* (`concoct_coverage_table.py`) computed on the chunked contigs against all BAMs.
+- *Clustering* (`concoct`) via Gaussian mixture models on composition + coverage.
+- *Fragment re-merging* (`merge_cutup_clustering.py`) reassembles original contigs from their chunk-level cluster assignments.
+- *Bin extraction* (`extract_fasta_bins.py`) writes one FASTA per cluster; outputs are renamed from `.fasta` to `.fa` for consistency with MetaBAT2/CheckM2 conventions.
+- *Output:* `results/concoct_bins/bins_fasta/`.
+
+**Outputs:**
+
+| Folder | Content |
+|---|---|
+| `metabat2_bins/` | MAGs from MetaBAT2 (`bin.<N>.fa`) + global depth matrix |
+| `semibin2_bins/bins_fasta/` | MAGs from SemiBin2 |
+| `concoct_bins/bins_fasta/` | MAGs from CONCOCT |
+
+---
 
 ### Step 6 — Bin annotation *(to complete)*
 
@@ -475,20 +527,28 @@ Raw shotgun data (FASTQ, on S3)
         |                                 |
         v                                 v
 [2] Read-based profiling            [3] Assembly
-    PlusPFP DB   <--[2a] build_kraken2_db      ...
-    Insect Addon <--[2b] build_kraken_custom
-        |
-        v
-    [2c/2d] Kraken2 + Bracken (per sample, dual-DB)
-        |                                 |
-        v                                 v
-Taxonomic abundance tables          [4] Binning → MAGs
-(PlusPFP + Addon)                        |
-                                          v
-                                     [5] Annotation
+    PlusPFP DB   <--[2a] build_kraken2_db      Per-sample de novo assembly (MEGAHIT, meta-sensitive)
+    Insect Addon <--[2b] build_kraken_custom          |
+        |                                             v
+        v                                     [4a] Catalog construction
+    [2c/2d] Kraken2 + Bracken (per sample, dual-DB)    Concat + rename + length filter (>=1500bp)
+        |                                              + MMseqs2 dereplication (95% id / 90% cov)
+        v                                              |
+Taxonomic abundance tables                              v
+(PlusPFP + Addon)                                [4b] Coverage profiling
+                                                    Per-sample read mapping (CoverM, minimap2-sr)
+                                                          |
+                                    +---------------------+---------------------+
+                                    |                     |                     |
+                                    v                     v                     v
+                              [5] MetaBAT2           [5] SemiBin2           [5] CONCOCT
+                              TNF + jgi depth        Self-supervised DL     Chunking + GMM
+                                    |                     |                     |
+                                    +---------------------+---------------------+
+                                                          |
+                                                          v
+                                                    [6] Bin annotation
 ```
-
----
 
 ---
 
@@ -496,7 +556,7 @@ Taxonomic abundance tables          [4] Binning → MAGs
 
 - HPC cluster with **SLURM** job scheduler
 - **rclone** configured with an S3 remote (`s3_uca`) pointing to the `lmge-tenebrion` bucket
-- **Apptainer/Singularity** available as a system binary, with the `kraken2_bracken.sif` image built for the 16S pipeline (`16_tenebrion/containers/`) and the `coverm_v0.7.0.sif` image (`pull_coverm.slurm`) in `containers/`
+- **Apptainer/Singularity** available as a system binary, with the following images in `containers/`: `kraken2_bracken.sif` (shared with the 16S pipeline, `16_tenebrion/containers/`), `coverm_v0.7.0.sif`, `metabat2_v2.15.sif`, `concoct_1.1.0.sif`, `semibin_2.1.0.sif`
 - Modules available on the cluster: `rclone/1.55.1`, `bowtie2/2.3.4.3`, `gcc/8.1.0`, `samtools/1.16.1`, `megahit/1.2.9`, `MMseqs2/13-45111`
 - Reference genome of *Tenebrio molitor* (`GCA_963966145.1_icTenMoli1.1`) hosted on S3 (`ref/genome/`)
 - Kraken2 databases hosted on S3: PlusPFP (`ref/kraken2_pluspfp/`) and the custom Insect Addon (`ref/kraken2_insect_addon/`)
