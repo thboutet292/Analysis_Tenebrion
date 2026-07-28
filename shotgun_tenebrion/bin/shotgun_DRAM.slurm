@@ -5,21 +5,63 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=100G
-#SBATCH --partition=lmge,long
+#SBATCH --partition=lmge,long,normal
 #SBATCH --time=76:00:00
 #SBATCH --chdir=/home/thboutet/projets/shotgun_tenebrion
 
 #######################################################################################
-#   GOAL    :   DRAM annotate + distill sur un bin
-#   USAGE   :   sbatch bin/shotgun_DRAM.slurm 
+#   AUTHORS :   Thomas BOUTET (IHP, LMGE)
+#   SCRIPT  :   shotgun_DRAM.slurm
+#
+#   GOAL    :   DRAM annotate + distill sur UN bin, pour n'importe lequel des
+#               trois binners (MetaBAT2, SemiBin2, CONCOCT). Fusion des anciens
+#               shotgun_DRAM.slurm / shotgun_DRAM_concoct.slurm / shotgun_DRAM_semibin2.slurm.
+#
+#   USAGE   :   sbatch bin/shotgun_DRAM.slurm <metabat2|semibin2|concoct> <nom_du_bin>
+#
+#               Exemples :
+#                 sbatch bin/shotgun_DRAM.slurm metabat2 bin.42
+#                 sbatch bin/shotgun_DRAM.slurm semibin2 SemiBin_125
+#                 sbatch bin/shotgun_DRAM.slurm concoct   71
+#
+#   NOTE    :   Un job SLURM par bin, comme avant — DRAM annotate ne traite
+#               qu'un seul génome à la fois et chaque run est lourd (plusieurs
+#               heures). Ce script reste donc pensé pour être lancé en boucle
+#               (un sbatch par bin, cf. exemple de boucle en bas de fichier),
+#               PAS pour tout faire en un seul job séquentiel.
 #######################################################################################
 
 set -euo pipefail
 
-BIN_NAME="${1}"
+BINNER="${1:-}"
+BIN_NAME="${2:-}"
+
+if [ -z "${BINNER}" ] || [ -z "${BIN_NAME}" ]; then
+    echo "[ERREUR] Usage : sbatch bin/shotgun_DRAM.slurm <metabat2|semibin2|concoct> <nom_du_bin>" >&2
+    exit 1
+fi
+
+# =====================================================================
+# CHEMINS SPÉCIFIQUES AU BINNER
+# =====================================================================
+case "${BINNER}" in
+    metabat2)
+        DIR_FILTERED_BINS="filtered_bins_metabat2"
+        ;;
+    semibin2)
+        DIR_FILTERED_BINS="filtered_bins_semibin2"
+        ;;
+    concoct)
+        DIR_FILTERED_BINS="filtered_bins_concoct"
+        ;;
+    *)
+        echo "[ERREUR] Binner inconnu : '${BINNER}'. Valeurs acceptées : metabat2, semibin2, concoct." >&2
+        exit 1
+        ;;
+esac
 
 echo "====================================================================="
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] DRAM — ${BIN_NAME} — Job ${SLURM_JOB_ID}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] DRAM — [${BINNER}] ${BIN_NAME} — Job ${SLURM_JOB_ID}"
 echo "====================================================================="
 
 module purge
@@ -34,13 +76,20 @@ TARGET_CONFIG="/usr/local/lib/python3.10/site-packages/mag_annotator/CONFIG"
 TARGET_ANNOTATE="/usr/local/lib/python3.10/site-packages/mag_annotator/annotate_bins.py"
 THREADS="${SLURM_CPUS_PER_TASK:-16}"
 
-BIN_FA="${PROJECT_DIR}/results/filtered_bins/${BIN_NAME}.fa"
-DIR_OUT_RAW="${PROJECT_DIR}/results/dram_annotation_raw/${BIN_NAME}"
-DIR_OUT_DISTILL="${PROJECT_DIR}/results/dram_annotation_distill/${BIN_NAME}"
+# Bins pris dans le dossier filtré par CheckM2/GTDB-Tk (Step 6/7), cohérent pour les 3 binners
+BIN_FA="${PROJECT_DIR}/results/${DIR_FILTERED_BINS}/${BIN_NAME}.fa"
+DIR_OUT_RAW="${PROJECT_DIR}/results/dram_${BINNER}_raw/${BIN_NAME}"
+DIR_OUT_DISTILL="${PROJECT_DIR}/results/dram_${BINNER}_distill/${BIN_NAME}"
+
+if [ ! -f "${BIN_FA}" ]; then
+    echo "[ERREUR] Bin introuvable : ${BIN_FA}" >&2
+    echo "         Vérifier le nom du bin et qu'il a bien passé le filtre qualité (Step 7)." >&2
+    exit 1
+fi
 
 mkdir -p log/ "${DIR_OUT_RAW}" "${DIR_OUT_DISTILL}"
 
-JOB_SCRATCH="/storage/scratch/${USER}/dram_${SLURM_JOB_ID}"
+JOB_SCRATCH="/storage/scratch/${USER}/dram_${BINNER}_${SLURM_JOB_ID}"
 DB_LOCAL="${JOB_SCRATCH}/dram_db"
 PATCH_DIR="${JOB_SCRATCH}/patch"
 FAKE_TMP="${JOB_SCRATCH}/fake_tmp"
@@ -140,7 +189,7 @@ echo " -> Patch OK."
 # ÉTAPE 4 : DRAM.py annotate
 # =====================================================================
 echo "---------------------------------------------------------------------"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 4] Annotate — ${BIN_NAME}..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 4] Annotate — [${BINNER}] ${BIN_NAME}..."
 
 rm -rf "${DIR_OUT_RAW}"
 
@@ -164,7 +213,7 @@ rm -rf "${DIR_OUT_RAW}"
 # ÉTAPE 5 : DRAM.py distill
 # =====================================================================
 echo "---------------------------------------------------------------------"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 5] Distill — ${BIN_NAME}..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ETAPE 5] Distill — [${BINNER}] ${BIN_NAME}..."
 
 rm -rf "${DIR_OUT_DISTILL}"
 
@@ -186,5 +235,24 @@ TRNA_ARG=""; [ -f "${DIR_OUT_RAW}/trnas.tsv" ] && TRNA_ARG="--trna_path ${DIR_OU
         ${TRNA_ARG}
 
 echo "====================================================================="
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] TERMINÉ — ${BIN_NAME}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] TERMINÉ — [${BINNER}] ${BIN_NAME}"
 echo "====================================================================="
+
+# =====================================================================
+# EXEMPLE DE LANCEMENT EN BOUCLE (à adapter / mettre dans un script à part) :
+#
+#   BINS_METABAT2="bin.1 bin.5 bin.12"
+#   for bin in $BINS_METABAT2; do
+#       sbatch bin/shotgun_DRAM.slurm metabat2 "$bin"
+#   done
+#
+#   BINS_SEMIBIN2="SemiBin_1 SemiBin_10 SemiBin_125"
+#   for bin in $BINS_SEMIBIN2; do
+#       sbatch bin/shotgun_DRAM.slurm semibin2 "$bin"
+#   done
+#
+#   BINS_CONCOCT="0 71 104"
+#   for bin in $BINS_CONCOCT; do
+#       sbatch bin/shotgun_DRAM.slurm concoct "$bin"
+#   done
+# =====================================================================
