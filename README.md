@@ -304,7 +304,7 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | rclone | 1.55.1 | SLURM module | Data transfer to/from S3 storage |
 | Bowtie2 | 2.3.4.3 | SLURM module | Host read alignment (decontamination) |
 | samtools | 1.16.1 | SLURM module | BAM filtering, sorting, FASTQ extraction |
-| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken, CoverM, binning, CheckM2 and GTDB-Tk containers |
+| Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken, CoverM, binning, CheckM2, GTDB-Tk and DRAM containers |
 | Kraken2 | *(per container image)* | Apptainer image | K-mer-based taxonomic assignment of paired reads |
 | Bracken | *(per container image)* | Apptainer image | Bayesian re-estimation of species-level abundances from Kraken2 reports |
 | NCBI Datasets CLI | v2 (linux-amd64) | Downloaded binary | Genome retrieval for the custom insect-focused Kraken2 addon database |
@@ -316,9 +316,7 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | CONCOCT | 1.1.0 | Apptainer image | Genome binning via Gaussian mixture clustering on chunked contigs |
 | CheckM2 | 1.0.2 | Apptainer image | MAG quality assessment (completeness/contamination) via Machine Learning (Diamond BlastP) |
 | GTDB-Tk | 2.3.2 (DB release R214) | Apptainer image | Taxonomic assignment of MAGs (marker gene placement + FastANI) |
-| *(functional annotation tool)* | *TBD* | *TBD* | Functional annotation of bins (e.g. DRAM) |
-
-*(functional annotation row to complete once the corresponding scripts are added)*
+| DRAM | 1.4.6 | Apptainer image | Functional annotation of MAGs (KEGG, dbCAN/CAZymes, MEROPS, Pfam, VOG) via `annotate` + `distill` |
 
 ---
 
@@ -345,7 +343,9 @@ shotgun_tenebrion/
 │   ├── pull_gtdbtk.slurm                    # Step 7a — Install the GTDB-Tk Apptainer image
 │   ├── build_gtdbtk.slurm                   # Step 7b — (one-off) Upload the GTDB-Tk R214 database to S3
 │   ├── shotgun_gtdbtk.slurm                 # Step 7c — Taxonomic assignment of the 3 binners' MAGs (GTDB-Tk)
-│   └── ...                                  # Step 8 — Functional annotation
+│   ├── setup_dram_db.slurm                  # Step 8a — (maintenance) Rebuild the viral + peptidase DRAM sub-databases on S3
+│   ├── shotgun_DRAM.slurm                   # Step 8b — Functional annotation of one MAG (any binner), one job per bin
+│   └── ...                                  # Step 9 — MAG abundance quantification
 │
 ├── containers/                        # Singularity/Apptainer images (.sif)
 ├── resources/                        # Bowtie2 index, reference genome, databases
@@ -373,7 +373,13 @@ shotgun_tenebrion/
     ├── filtered_bins_concoct/         # CONCOCT MAGs passing the CheckM2 quality filter
     ├── gtdbtk_taxo_metabat2/          # GTDB-Tk taxonomy assignments for MetaBAT2 MAGs
     ├── gtdbtk_taxo_semibin2/          # GTDB-Tk taxonomy assignments for SemiBin2 MAGs
-    └── gtdbtk_taxo_concoct/           # GTDB-Tk taxonomy assignments for CONCOCT MAGs
+    ├── gtdbtk_taxo_concoct/           # GTDB-Tk taxonomy assignments for CONCOCT MAGs
+    ├── dram_metabat2_raw/             # DRAM annotate output, one subfolder per MetaBAT2 MAG
+    ├── dram_metabat2_distill/         # DRAM distill output, one subfolder per MetaBAT2 MAG
+    ├── dram_semibin2_raw/             # DRAM annotate output, one subfolder per SemiBin2 MAG
+    ├── dram_semibin2_distill/         # DRAM distill output, one subfolder per SemiBin2 MAG
+    ├── dram_concoct_raw/              # DRAM annotate output, one subfolder per CONCOCT MAG
+    └── dram_concoct_distill/          # DRAM distill output, one subfolder per CONCOCT MAG
 ```
 
 > Note: unlike the 16S pipeline (fully local `data/` and `results/`), the shotgun pipeline uses an **S3 bucket** (`lmge-tenebrion`) as the primary storage for raw and cleaned reads, accessed via `rclone`.
@@ -400,12 +406,18 @@ sbatch bin/shotgun_checkm2.slurm                # single job — QC of all 3 bin
 sbatch bin/pull_gtdbtk.slurm                    # once — pulls the GTDB-Tk Apptainer image
 sbatch bin/build_gtdbtk.slurm                   # once — uploads the GTDB-Tk R214 database to S3
 sbatch bin/shotgun_gtdbtk.slurm                 # single job — taxonomic assignment of all 3 binners' MAGs (GTDB-Tk)
-# Step 8 onward — to be completed
+sbatch bin/setup_dram_db.slurm                  # maintenance — (re)builds the viral + peptidase DRAM sub-databases on S3
+
+# one sbatch per MAG, for each binner (see loop example below)
+sbatch bin/shotgun_DRAM.slurm metabat2 bin.42
+sbatch bin/shotgun_DRAM.slurm semibin2 SemiBin_125
+sbatch bin/shotgun_DRAM.slurm concoct   71
+# Step 9 onward — to be completed
 ```
 
 `shotgun_kraken2_bracken.slurm` (PlusPFP-only) is the earlier, single-database version of the profiling step; `shotgun_kraken2_bracken_addon.slurm` supersedes it once the insect addon database is available, since it reproduces the PlusPFP run and adds the addon pass in the same job.
 
-Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it auto-detects the sample list on S3 and resubmits itself with the correct array range. Unlike Steps 1–4, the three binning tools in Step 5, the CheckM2 QC in Step 6, and GTDB-Tk in Step 7 are **single jobs, not arrays** — they each process the whole catalog / all bins together in one run, since these steps inherently work across samples rather than per sample.
+Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it auto-detects the sample list on S3 and resubmits itself with the correct array range. Unlike Steps 1–4, the three binning tools in Step 5, the CheckM2 QC in Step 6, and GTDB-Tk in Step 7 are **single jobs, not arrays** — they each process the whole catalog / all bins together in one run, since these steps inherently work across samples rather than per sample. **Step 8 (DRAM) breaks that pattern again**: `DRAM.py annotate` only processes one genome per invocation, so `shotgun_DRAM.slurm` is launched once per MAG (one `sbatch` call per bin, looped manually or via a small wrapper), rather than as a single job or a SLURM array over all bins at once.
 
 ---
 
@@ -587,7 +599,34 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 
 ---
 
-### Step 8 — Functional annotation *(to complete)*
+### Step 8 — Functional annotation: DRAM
+
+**Objective:** Annotate the metabolic and functional gene content of each MAG that passed the Step 7 quality filter — central databases (KEGG, dbCAN/CAZymes, MEROPS, Pfam) plus viral (VOG) markers — then distill the raw annotation into pathway-level completeness scores.
+
+**Database maintenance — `setup_dram_db.slurm`.** A maintenance/patch script, not part of the standard per-run pipeline: rebuilds specifically the **viral** and **peptidase** DRAM sub-databases (downloading `viral.merged.protein.faa.gz` and `merops_peptidases_nr.faa` from S3, then compiling them with `DRAM-setup.py prepare_databases --select_db`) and re-uploads the result to S3 (`ref/dram_db/`). Run this only when those two sub-databases specifically need rebuilding — the rest of the DRAM database (KEGG, dbCAN, Pfam...) is assumed already built and present on S3.
+
+**Per-MAG annotation — `shotgun_DRAM.slurm`.** A single script parameterised by binner and bin name (`sbatch bin/shotgun_DRAM.slurm <metabat2|semibin2|concoct> <bin_name>`), merging what used to be three near-identical scripts (one per binner). Unlike Steps 5–7, this step stays **one SLURM job per MAG** rather than a single job or an array over everything at once, since `DRAM.py annotate` only processes one genome per invocation — jobs are submitted in a loop, one `sbatch` call per bin (example loop included at the bottom of the script):
+- *Database sync.* The DRAM database is rclone-copied from S3 into scratch, excluding the raw `database_files/` and unused `kofam_profiles/profiles/` subfolders to save transfer time.
+- *Config injection.* A dummy CONFIG file is bound over DRAM's internal package config (`mag_annotator/CONFIG`) inside the container, then populated via `DRAM-setup.py set_database_locations`, pointing at whichever database files were actually found on scratch (each location argument is only added if the corresponding file exists, so missing sub-databases — e.g. viral/peptidase before their first build — don't break the run).
+- *Runtime patch.* `annotate_bins.py` is copied out of the container and patched with `sed` to guard a Pfam-hits access that otherwise crashes when Pfam annotation is absent for a given gene — the patched copy is bound back over the original inside the container at runtime.
+- *Annotation (`DRAM.py annotate`).* Predicts genes (Prodigal) and searches them against all configured databases (MMseqs2/HMMER) for the selected MAG (`--min_contig_size 1000`).
+- *Distillation (`DRAM.py distill`).* Cross-references the raw gene hits against DRAM's metabolic pathway maps to produce per-pathway completeness scores, incorporating rRNA/tRNA calls from the annotate step when available.
+- *Input source.* Bins are read from `filtered_bins_<binner>/` (Step 7's quality-filtered sets) — consistent across all three binners.
+
+**Outputs:**
+
+| Folder | Content |
+|---|---|
+| `dram_metabat2_raw/<bin>/` | Raw DRAM annotation (`annotations.tsv`, rRNA/tRNA calls) — MetaBAT2 |
+| `dram_metabat2_distill/<bin>/` | Distilled pathway completeness — MetaBAT2 |
+| `dram_semibin2_raw/<bin>/` | Raw DRAM annotation — SemiBin2 |
+| `dram_semibin2_distill/<bin>/` | Distilled pathway completeness — SemiBin2 |
+| `dram_concoct_raw/<bin>/` | Raw DRAM annotation — CONCOCT |
+| `dram_concoct_distill/<bin>/` | Distilled pathway completeness — CONCOCT |
+
+---
+
+### Step 9 — MAG abundance quantification *(to complete)*
 
 ---
 
@@ -606,13 +645,13 @@ Raw shotgun data (FASTQ, on S3)
     PlusPFP DB   <--[2a] build_kraken2_db                     |
     Insect Addon <--[2b] build_kraken_custom                  |
         |                                                     v
-        v                                         [4a] Catalog construction
-    [2c/2d] Kraken2 + Bracken (per sample, dual-DB)    Concat + rename + length filter (>=1500bp)
-        |                                              + MMseqs2 dereplication (95% id / 90% cov)
+        v                                             [4a] Catalog construction
+    [2c/2d] Kraken2 + Bracken (per sample, dual-DB)            Concat + rename + length filter (>=1500bp)
+        |                                                      + MMseqs2 dereplication (95% id / 90% cov)
         v                                                     |
 Taxonomic abundance tables                                    v
-(PlusPFP + Addon)                                [4b] Coverage profiling
-                                                    Per-sample read mapping (CoverM, minimap2-sr)
+(PlusPFP + Addon)                                    [4b] Coverage profiling
+                                                            Per-sample read mapping (CoverM, minimap2-sr)
                                                               |
                                         +---------------------+---------------------+
                                         |                     |                     |
@@ -630,8 +669,11 @@ Taxonomic abundance tables                                    v
                                                     [7] GTDB-Tk (quality pre-filter + classify_wf)
                                                         one taxonomy per binner, sequential runs
                                                               |
-                                                              v
-                                                [8] Functional annotation
+                                        +---------------------+---------------------+
+                                        |                                           |
+                                        v                                           v
+                              [8] DRAM (annotate + distill)             [9] MAG abundance quantification
+                              one job per MAG, all binners                  (to complete)
 ```
 
 ---
@@ -640,9 +682,10 @@ Taxonomic abundance tables                                    v
 
 - HPC cluster with **SLURM** job scheduler
 - **rclone** configured with an S3 remote (`s3_uca`) pointing to the `lmge-tenebrion` bucket
-- **Apptainer/Singularity** available as a system binary, with the following images in `containers/`: `kraken2_bracken.sif` (shared with the 16S pipeline, `16_tenebrion/containers/`), `coverm_v0.7.0.sif`, `metabat2_v2.15.sif`, `concoct_1.1.0.sif`, `semibin_2.1.0.sif`, `checkm2_v1.0.2.sif`, `gtdbtk_v2.3.2.sif`
+- **Apptainer/Singularity** available as a system binary, with the following images in `containers/`: `kraken2_bracken.sif` (shared with the 16S pipeline, `16_tenebrion/containers/`), `coverm_v0.7.0.sif`, `metabat2_v2.15.sif`, `concoct_1.1.0.sif`, `semibin_2.1.0.sif`, `checkm2_v1.0.2.sif`, `gtdbtk_v2.3.2.sif`, `dram_v1.4.6.sif`
 - CheckM2 ML database (~3 GB `.dmnd` file) hosted on S3 (`ref/checkm2_db/`), built once via `build_checkm2_db.slurm`
 - GTDB-Tk R214 reference package (~85 GB) hosted on S3 (`ref/gtdbtk_r214/`), built once via `build_gtdbtk.slurm`
+- DRAM database (KEGG, dbCAN, MEROPS, Pfam, VOG, description DB) hosted on S3 (`ref/dram_db/`); the viral and peptidase sub-databases specifically can be rebuilt via `setup_dram_db.slurm`
 - Modules available on the cluster: `rclone/1.55.1`, `bowtie2/2.3.4.3`, `gcc/8.1.0`, `samtools/1.16.1`, `megahit/1.2.9`, `MMseqs2/13-45111`
 - Reference genome of *Tenebrio molitor* (`GCA_963966145.1_icTenMoli1.1`) hosted on S3 (`ref/genome/`)
 - Kraken2 databases hosted on S3: PlusPFP (`ref/kraken2_pluspfp/`) and the custom Insect Addon (`ref/kraken2_insect_addon/`)
