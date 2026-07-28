@@ -669,11 +669,10 @@ Taxonomic abundance tables                                    v
                                                     [7] GTDB-Tk (quality pre-filter + classify_wf)
                                                         one taxonomy per binner, sequential runs
                                                               |
-                                        +---------------------+---------------------+
-                                        |                                           |
-                                        v                                           v
-                              [8] DRAM (annotate + distill)             [9] MAG abundance quantification
-                              one job per MAG, all binners                  (to complete)
+                                                              |                                        
+                                                              v                                    
+                                                    [8] DRAM (annotate + distill)            
+            
 ```
 
 ---
