@@ -412,7 +412,6 @@ sbatch bin/setup_dram_db.slurm                  # maintenance — (re)builds the
 sbatch bin/shotgun_DRAM.slurm metabat2 bin.42
 sbatch bin/shotgun_DRAM.slurm semibin2 SemiBin_125
 sbatch bin/shotgun_DRAM.slurm concoct   71
-# Step 9 onward — to be completed
 ```
 
 `shotgun_kraken2_bracken.slurm` (PlusPFP-only) is the earlier, single-database version of the profiling step; `shotgun_kraken2_bracken_addon.slurm` supersedes it once the insect addon database is available, since it reproduces the PlusPFP run and adds the addon pass in the same job.
@@ -623,10 +622,6 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 | `dram_semibin2_distill/<bin>/` | Distilled pathway completeness — SemiBin2 |
 | `dram_concoct_raw/<bin>/` | Raw DRAM annotation — CONCOCT |
 | `dram_concoct_distill/<bin>/` | Distilled pathway completeness — CONCOCT |
-
----
-
-### Step 9 — MAG abundance quantification *(to complete)*
 
 ---
 
