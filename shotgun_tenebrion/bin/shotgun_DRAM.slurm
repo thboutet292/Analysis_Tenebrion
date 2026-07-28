@@ -24,7 +24,7 @@
 #                 sbatch bin/shotgun_DRAM.slurm semibin2 SemiBin_125
 #                 sbatch bin/shotgun_DRAM.slurm concoct   71
 #
-#   NOTE    :   Un job SLURM par bin, comme avant — DRAM annotate ne traite
+#   NOTE    :   Un job SLURM par bin — DRAM annotate ne traite
 #               qu'un seul génome à la fois et chaque run est lourd (plusieurs
 #               heures). Ce script reste donc pensé pour être lancé en boucle
 #               (un sbatch par bin, cf. exemple de boucle en bas de fichier),
