@@ -400,6 +400,7 @@ sbatch bin/pull_binners.slurm                   # once — pulls the MetaBAT2 + 
 sbatch bin/shotgun_metabat2.slurm               # single job — binning with MetaBAT2
 sbatch bin/shotgun_semibin2.slurm               # single job — binning with SemiBin2
 sbatch bin/shotgun_concoct.slurm                # single job — binning with CONCOCT
+sbatch bin/shotgun_maxbin2.slurm                # single job — binning with MaxBin2
 sbatch bin/pull_checkm2.slurm                   # once — pulls the CheckM2 image + downloads the ML database locally
 sbatch bin/build_checkm2_db.slurm               # once — re-uploads the CheckM2 database to S3, for cluster-wide reuse
 sbatch bin/shotgun_checkm2.slurm                # single job — QC of all 3 binners' MAGs (CheckM2)
