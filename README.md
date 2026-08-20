@@ -512,11 +512,11 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 
 ---
 
-### Step 5 — Binning: MetaBAT2, SemiBin2 & CONCOCT
+### Step 5 — Binning: MetaBAT2, MaxBin2, SemiBin2 & CONCOCT
 
 **Objective:** From the non-redundant contig catalog (Step 4) and its per-sample coverage BAMs, recover draft genomes (MAGs) using three independent binning strategies run in parallel, to be cross-compared and quality-checked downstream (Step 6).
 
-**Image installation — `pull_binners.slurm`.** Pulls all three binning Apptainer images in a single job: MetaBAT2 2.15, CONCOCT 1.1.0, and SemiBin2 2.1.0, all from Biocontainers. The Apptainer cache/tmp is redirected to scratch and removed once every image is downloaded and version-tested.
+**Image installation — `pull_binners.slurm`.** Pulls all four binning Apptainer images in a single job: MetaBAT2 2.15, MaxBin2 2.2.7, CONCOCT 1.1.0, and SemiBin2 2.1.0, all from Biocontainers. The Apptainer cache/tmp is redirected to scratch and removed once every image is downloaded and version-tested.
 
 **MetaBAT2 — `shotgun_metabat2.slurm`.** A single SLURM job (no array) processing the whole catalog and all per-sample BAMs at once:
 - *Depth matrix.* `jgi_summarize_bam_contig_depths` combines every sorted BAM from `results/coverm/bams/` into one global coverage matrix (`global_depth.txt`); BAMs are listed alphabetically first so the column order stays consistent across reruns.
@@ -539,6 +539,14 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 - *Bin extraction* (`extract_fasta_bins.py`) writes one FASTA per cluster; outputs are renamed from `.fasta` to `.fa` for consistency with MetaBAT2/CheckM2 conventions.
 - *Output:* `results/concoct_bins/bins_fasta/`.
 
+**MaxBin2 — `shotgun_maxbin2.slurm`.** A single SLURM job (no array) that reuses MetaBAT2's depth-calculation tool before running MaxBin2 itself, since MaxBin2 has no built-in coverage estimator:
+- *Pre-flight check.* Confirms every BAM in `results/coverm/bams/` has a matching `.bai` index, aborting with an explicit error otherwise.
+- *Catalog re-filter.* Same ≥1,500 bp defensive filter as the other binners, cached as `catalog_min1500.fasta`.
+- *Depth matrix.* `jgi_summarize_bam_contig_depths` (called from the MetaBAT2 image) computes a global depth matrix (`depth_matrix.txt`) across all BAMs.
+- *Abundance files.* The depth matrix is split into one 2-column (contig, depth) file per sample under `abundance_files/`, listed in `abund_list.txt` — the format MaxBin2 expects via `-abund_list`.
+- *Binning.* `run_MaxBin.pl` clusters contigs using an Expectation-Maximization algorithm on tetranucleotide frequency composition and multi-sample abundance.
+- *Output:* bins (`maxbin2_out.<NNN>.fasta`) are renamed to `.fa` and copied into `results/maxbin2_bins/bins_fasta/`, standardised like the other three binners.
+
 **Outputs:**
 
 | Folder | Content |
@@ -546,6 +554,7 @@ Step 1 is a **self-submitting SLURM Array**: launched once without `--array`, it
 | `metabat2_bins/` | MAGs from MetaBAT2 (`bin.<N>.fa`) + global depth matrix |
 | `semibin2_bins/bins_fasta/` | MAGs from SemiBin2 |
 | `concoct_bins/bins_fasta/` | MAGs from CONCOCT |
+| `maxbin2_bins/bins_fasta/` | MAGs from MaxBin2 + depth matrix & per-sample abundance files |
 
 ---
 
