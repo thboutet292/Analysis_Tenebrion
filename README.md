@@ -314,6 +314,7 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | MetaBAT2 | 2.15 | Apptainer image | Genome binning via TNF composition + differential coverage (`jgi_summarize_bam_contig_depths`) |
 | SemiBin2 | 2.1.0 | Apptainer image | Genome binning via self-supervised deep learning (`single_easy_bin`) |
 | CONCOCT | 1.1.0 | Apptainer image | Genome binning via Gaussian mixture clustering on chunked contigs |
+| MaxBin2 | 2.2.7 | Apptainer image | Genome binning via Expectation-Maximization on tetranucleotide frequency + abundance (`run_MaxBin.pl`) |
 | CheckM2 | 1.0.2 | Apptainer image | MAG quality assessment (completeness/contamination) via Machine Learning (Diamond BlastP) |
 | GTDB-Tk | 2.3.2 (DB release R214) | Apptainer image | Taxonomic assignment of MAGs (marker gene placement + FastANI) |
 | DRAM | 1.4.6 | Apptainer image | Functional annotation of MAGs (KEGG, dbCAN/CAZymes, MEROPS, Pfam, VOG) via `annotate` + `distill` |
@@ -337,6 +338,7 @@ shotgun_tenebrion/
 │   ├── shotgun_metabat2.slurm               # Step 5b — Binning with MetaBAT2
 │   ├── shotgun_semibin2.slurm               # Step 5c — Binning with SemiBin2
 │   ├── shotgun_concoct.slurm                # Step 5d — Binning with CONCOCT
+│   ├── shotgun_maxbin2.slurm                # Step 5e — Binning with MaxBin2
 │   ├── pull_checkm2.slurm                   # Step 6a — Install the CheckM2 Apptainer image + ML database
 │   ├── build_checkm2_db.slurm               # Step 6b — (one-off) Upload the CheckM2 database to S3
 │   ├── shotgun_checkm2.slurm                # Step 6c — Quality control of the 3 binners' MAGs (CheckM2)
