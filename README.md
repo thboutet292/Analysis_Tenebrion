@@ -257,7 +257,7 @@ Raw data (FASTQ)
 [6b] α/β Diversity      Shannon per sample + Bray-Curtis between replicates
         |
         v
-[6c] Visualisation      Barplots, heatmaps, quadrants, PCA, Ward.D2 clustering, mirror plots (Wilcoxon+FDR)
+[6c] Visualisation      Barplots, quadrants, PCA, Ward.D2 clustering, mirror plots (Wilcoxon+FDR)
 ```
 
 ---
