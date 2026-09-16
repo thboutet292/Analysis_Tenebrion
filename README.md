@@ -66,7 +66,7 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
     ├── qc/                     # FastQC and MultiQC reports
     ├── PRODUCTION_HYBRID/      # MATAM scaffolds + Salmon abundance table
     ├── 16S/
-    │   └── alpha_beta/         # Diversity plots (Step 6 output)
+    │   └── 16S_figure/         # Diversity plots (Step 6 output)
     └── all_matam_salmon_qiime_like_table_counts_wSpecies.tsv  # Final table (Step 5 output)
 ```
 
@@ -161,60 +161,57 @@ The script takes as input the compiled sequence table produced by Salmon (`all_m
 
 ### Step 6 — `16S_analysis.R`: Diversity analysis and visualisation
 
-**Objective:** Characterise the gut microbial communities of *T. molitor* across developmental stages (larvae → adults) and produce the full set of analysis figures.
+**Objective:** Characterise the gut microbial communities of *T. molitor* across developmental stages (larvae → adults) against their rearing substrate, and produce the full set of analysis figures at Genus level (occasionally broken down to Species).
 
-The script takes as input the QIIME2-like table produced at Step 5 and a metadata file (`data/16S/metadata.tsv`), and runs through 16 analysis blocks:
+The script takes as input the QIIME2-like table produced at Step 5 and the metadata file (`data/16S/metadata.tsv`), and runs through 15 blocks (0–14):
 
-**Data loading and harmonisation (Blocks 1–2).** The count file is read robustly (handling the `#OTU ID` header specific to QIIME2 format). Taxonomic ranks are extracted by regex from SILVA strings (`d__`, `p__`, ..., `s__`). A taxonomic revision dictionary (`harmoniser_taxonomie()`) corrects genera reclassified in SILVA 138 (splits of *Lactobacillus*, *Bacillus*, *Mycobacterium*, *Burkholderia*, etc.) to ensure cross-sample consistency. Plastids (chloroplasts, mitochondria) are filtered out. Binomial nomenclature is standardised.
+**Setup and shared helpers (Blocks 0–1).** Packages, file paths and the output directory (`results/16S/16S_figure/`) are declared once. Reusable helper functions factor out logic that used to be duplicated across the script: `normaliser_100()` / `normaliser_avec_condition()` (relative-abundance conversion + metadata join), `construire_palette_taxo()` (consistent taxon colouring), `sauver_figure()` (standardised PNG/SVG export), `preparer_barplot_data()` / `creer_barplot()` (Top-N + "Others" stacked barplots), `creer_quadrant_plot()` / `calculer_core_scatter()` (Prevalence/Abundance core-microbiome classification), and `creer_mirror_plot()` (a single parameterised function driving both two-group comparison figures in Blocks 13–14).
 
-**Alpha and beta diversity (Blocks 3–4).** The Shannon index is computed per sample on 100 %-normalised counts. Bray-Curtis dissimilarity is calculated via the `vegan` library (sample × sample matrix) to measure community divergence between replicates within each stage. Both metrics are displayed jointly on time-course curves following the developmental chronology.
+**Data loading and harmonisation (Block 2).** The count table is read robustly (handling the `#OTU ID` QIIME2 header). Taxonomic ranks are extracted by regex from SILVA strings (`d__`, `p__`, ..., `s__`), and chloroplast/mitochondrial contaminants are filtered out. Sample and condition codes are translated to publication-ready English labels, and the developmental chronology (larvae → pupae → beetles, with the raw and final substrates as environmental anchors) is declared as an ordered factor.
 
-**Taxonomic compositions (Blocks 5–8).** Stacked barplots at Genus and Species level are generated for larval stages, adult stages, and the full dataset (insect + environmental substrates). Rare taxa are grouped into an "Others" category to keep figures readable.
+**Alpha and beta diversity (Block 3).** The Shannon index is computed per sample on raw Genus-level counts (`vegan::diversity`). Bray-Curtis dissimilarity is computed within each developmental stage from 100 %-normalised abundances, both as a per-stage mean ± SD and as each sample's mean dissimilarity to its own replicates.
 
-**Similarity matrices (Block 9).** Bray-Curtis heatmaps are produced for all replicates (insect + substrate) and for the insect-only subset, enabling visual identification of stage-level clustering.
+**Statistical export (Block 4).** Per-stage Shannon and Bray-Curtis values are written to `Valeurs_Shannon_BrayCurtis.tsv`.
 
-**Master figures (Blocks 10–11).** Alpha/beta curves and barplots are combined via `patchwork` into multi-panel publication-ready figures, for both the insect-only and the full dataset including substrates.
+**Global composition barplot (Block 5).** A single faceted stacked barplot (Top 14 genera, one bar per biological replicate, faceted by developmental stage) shows compositional variability across every replicate, insect stage and substrate together.
 
-**Core microbiome (Blocks 12–15).** For larvae and adults, the core microbiome is characterised at two taxonomic ranks (Genus and Species) using two complementary approaches: mean abundance barplots per stage, and Prevalence/Abundance quadrant plots (ecological classification into *Strict core*, *Satellite*, *Transient* and *Background noise*). Donut charts summarise adult core composition.
+**Larval core microbiome (Blocks 6–7).** For the five feeding larval instars, a Top-13 stacked barplot shows mean composition per stage, and a Prevalence (≥75 %) vs Abundance quadrant plot classifies genera into *Strict/High Shared Microbiota* vs *Others genera*.
 
-**Alpha/beta correlation (Block 15 bis).** A Spearman test evaluates the relationship between intra-group heterogeneity (mean Bray-Curtis distance) and individual alpha diversity (Shannon), with stage centroids and individual replicates represented.
+**Intra-stage fidelity matrices (Block 8).** For the three most biologically sensitive stages (Tiny_Larvae, Pupae, Young_Beetles), heatmaps show per-replicate abundance for genera present in at least 3 of 4 replicates, stacked into one combined figure (`Genome_heterogeneous`).
 
-**Intra-genus taxonomic resolution (Block 16).** For the most abundant genera in larval and adult stages, fragmented horizontal barplots show the intra-genus breakdown into species, enabling assessment of the taxonomic resolution achieved by MATAM/SILVA.
+**Adult core microbiome (Block 9).** The same Prevalence/Abundance quadrant classification (Block 7's logic, reused) is applied to the Beetles stage alone.
 
-**Output figures** (saved to `results/16S/alpha_beta/`):
+**Ordination (Block 10).** A Hellinger-transformed PCA (`vegan::rda`) is run on the whole insect cycle plus the raw substrate, avoiding the double-zero bias of raw compositional data and dampening the influence of dominant taxa.
+
+**Intra-genus species resolution (Block 11).** For the pooled larval stages, each larval stage individually (Microlarvae → W4), and Beetles, the most abundant genera (Top 8–10) are broken down into their constituent species (or "Unclassified (sp.)"/"Other identified species"), assessing the taxonomic resolution achieved by MATAM/SILVA.
+
+**Hierarchical clustering (Block 12).** On the same PC1–PC2 Hellinger space used in Block 10, Ward.D2 clustering is performed, with an Elbow (WSS) plot to support the choice of cluster number (k = 3 by default); cluster membership is exported to TSV alongside a dendrogram coloured by developmental stage.
+
+**Mirror plots (Blocks 13–14).** Two "mirrored spine" barplots — larvae vs Beetles, and larvae vs Raw_Substrate — compare a curated genus list between the two groups, showing mean relative abundance ± standard error together with a Benjamini-Hochberg–corrected Wilcoxon rank-sum test per genus. Both figures are produced by the same `creer_mirror_plot()` function (Block 1), parameterised by group, colour and genus list.
+
+**Output figures** (saved to `results/16S/16S_figure/`):
 
 | File | Content |
 |---|---|
-| `Valeurs_Shannon_BrayCurtis.tsv` | Raw numerical table of alpha/beta indices |
-| `shannon_vs_braycurtis.png` / `.svg` | Alpha/beta curves (insect only) |
-| `Barplot_Global_16S.png` / `.svg` | Taxonomic composition per replicate (insect only) |
-| `Matrice_BrayCurtis_Tous_Replicats.png` | Bray-Curtis heatmap (all replicates) |
-| `Matrice_BrayCurtis_Insecte_Seul.png` | Bray-Curtis heatmap (insect only) |
-| `Master_Figure_substrats.png` / `.svg` | Multi-panel master figure (insect + substrates) |
-| `Master_Figure.png` / `.svg` | Multi-panel master figure (insect only) |
+| `Valeurs_Shannon_BrayCurtis.tsv` | Raw numerical table of alpha/beta diversity indices |
+| `Barplot_Global_16S.png` / `.svg` | Taxonomic composition per replicate, all stages + substrates |
 | `Larval_Microbiome_Means.png` | Mean larval core microbiome (Genus) |
-| `Larval_Microbiome_Means_Species.png` | Mean larval core microbiome (Species) |
-| `Larval_Microbiome_Quadrants.png` | Prevalence/Abundance quadrants, larvae (Genus) |
-| `Larval_Microbiome_Quadrants_Species.png` | Prevalence/Abundance quadrants, larvae (Species) |
-| `Genome_heterogeneous.png` | Intra-stage fidelity matrices |
-| `Adult_Microbiome_Means.png` | Mean adult core microbiome (Genus) |
-| `Adult_Microbiome_Donut.png` | Adult donut chart (Genus) |
-| `Adult_Microbiome_Means_Species.png` | Mean adult core microbiome (Species) |
-| `Adult_Microbiome_Donut_Species.png` | Adult donut chart (Species) |
-| `Adult_Microbiome_Quadrants.png` | Prevalence/Abundance quadrants, adults (Genus) |
-| `Adult_Microbiome_Quadrants_Species.png` | Prevalence/Abundance quadrants, adults (Species) |
-| `PCA_microbiote_insecte_seul.png` | PCA of community structures (insect only) |
-| `PCA_microbiote_insecte_seul_ellipses.png` | PCA with 95% confidence ellipses (insect only) |
-| `Correlation_Bray_vs_Shannon.png` / `.svg` | Alpha vs beta correlation (Spearman) |
-| `Taxonomic_Resolution_Average_Larvae.png` | Intra-genus resolution, all larval stages pooled |
-| `Taxonomic_Resolution_Microlarvae.png` | Intra-genus resolution, Microlarvae (7 mg) |
-| `Taxonomic_Resolution_Larvae_S1.png` | Intra-genus resolution, Larvae S1 (14 mg) |
-| `Taxonomic_Resolution_Larvae_S2.png` | Intra-genus resolution, Larvae S2 (40 mg) |
-| `Taxonomic_Resolution_Larvae_S3.png` | Intra-genus resolution, Larvae S3 (65 mg) |
-| `Taxonomic_Resolution_Larvae_S4.png` | Intra-genus resolution, Larvae S4 (100 mg) |
-| `Taxonomic_Resolution_Adults.png` | Intra-genus resolution, adults |
-| `Dendrogramme_Global_Epure.png` | Hierarchical clustering dendrogram (all samples) |
-| `Dendrogramme_Insecte_Epure.png` | Hierarchical clustering dendrogram (insect only) |
+| `Larval_Microbiome_Quadrants.png` / `.svg` | Prevalence/Abundance quadrants, larvae |
+| `Genome_heterogeneous.png` / `.svg` | Intra-stage fidelity matrices (Tiny_Larvae, Pupae, Young_Beetles) |
+| `Adult_Microbiome_Quadrants.png` / `.svg` | Prevalence/Abundance quadrants, Beetles |
+| `PCA_microbiote.png` | Hellinger-transformed PCA (insect cycle + raw substrate) |
+| `PCA_Equivalent_Clustering_Elbow_Plot.png` | Elbow (WSS) plot for the optimal number of clusters |
+| `PCA_Equivalent_Clustering_Dendrogram.png` | Ward.D2 hierarchical clustering dendrogram |
+| `PCA_Equivalent_Clustering_Clusters_Composition.tsv` | Sample-to-cluster assignment table |
+| `Taxonomic_Resolution_Average_Larvae.png` / `.svg` | Intra-genus species resolution, all larval stages pooled |
+| `Taxonomic_Resolution_Microlarvae.png` / `.svg` | Intra-genus species resolution, Microlarvae (7 mg) |
+| `Taxonomic_Resolution_Larvae_W1.png` / `.svg` | Intra-genus species resolution, Larvae W1 (14 mg) |
+| `Taxonomic_Resolution_Larvae_W2.png` / `.svg` | Intra-genus species resolution, Larvae W2 (40 mg) |
+| `Taxonomic_Resolution_Larvae_W3.png` / `.svg` | Intra-genus species resolution, Larvae W3 (65 mg) |
+| `Taxonomic_Resolution_Larvae_W4.png` / `.svg` | Intra-genus species resolution, Larvae W4 (100 mg) |
+| `Taxonomic_Resolution_Adults.png` / `.svg` | Intra-genus species resolution, Beetles |
+| `Comparison_Mirror_Plot_Spine.png` / `.svg` | Mirror plot — larvae vs Beetles (mean ± SE, Wilcoxon FDR) |
+| `Comparison_Mirror_Plot_Spine_Substrate.png` / `.svg` | Mirror plot — larvae vs Raw_Substrate (mean ± SE, Wilcoxon FDR) |
 
 ---
 
@@ -260,7 +257,7 @@ Raw data (FASTQ)
 [6b] α/β Diversity      Shannon per sample + Bray-Curtis between replicates
         |
         v
-[6c] Visualisation      Barplots, heatmaps, quadrants, PCA, correlations
+[6c] Visualisation      Barplots, heatmaps, quadrants, PCA, Ward.D2 clustering, mirror plots (Wilcoxon+FDR)
 ```
 
 ---
@@ -271,7 +268,7 @@ Raw data (FASTQ)
 - **Singularity / Apptainer** available as a system binary
 - Modules available on the cluster: `fastqc/0.11.7`, `MultiQC/1.7`, `python/3.7.1`, `gcc/4.8.4`, `gcc/8.1.0`, `usearch/9.2.64`
 - **Conda** environment (version 23.3.1) including Salmon 1.10.2
-- **R** with packages: `dada2`, `dplyr`, `tidyr`, `readr`, `parallel` (Step 5) and `ggplot2`, `vegan`, `tibble`, `stringr`, `forcats`, `colorspace`, `patchwork`, `ggrepel`, `scales` (Step 6)
+- **R** with packages: `dada2`, `dplyr`, `tidyr`, `readr`, `parallel` (Step 5) and `ggplot2`, `vegan`, `tibble`, `stringr`, `forcats`, `colorspace`, `patchwork`, `ggrepel`, `scales`, `ggdendro` (Step 6; `ggdendro` is auto-installed by the script if missing)
 - SILVA v138.2 reference databases (`toGenus_trainset.fa.gz` and `assignSpecies.fa.gz`) in `data/16S/SILVA/`
 - Metadata file (`data/16S/metadata.tsv`) with columns `sample-id` and `condition`
 - Internet access from compute nodes for downloading SILVA and Singularity images
