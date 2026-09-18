@@ -32,7 +32,7 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | Singularity | cluster | System binary | Isolation and execution of MATAM and SortMeRNA environments |
 | SortMeRNA | 2.1b | Singularity image (Biocontainers) | Reference database indexing |
 | USEARCH | 9.2.64 | SLURM module | Ultra-fast sequence dereplication |
-| MATAM | 1.6.1 / 1.6.2* | Singularity images | De novo assembly targeting 16S rRNA |
+| MATAM | 1.6.1 | Singularity images | De novo assembly targeting 16S rRNA |
 | Salmon | 1.10.2 | Conda 23.3.1 | Quantification via pseudo-alignment and EM algorithm |
 | R / DADA2 | — | Local R script | Taxonomic assignment (Bayesian classifier + exact identity) |
 | R / ggplot2, vegan, etc. | — | Local R script | Alpha/beta diversity analysis and visualisation |
