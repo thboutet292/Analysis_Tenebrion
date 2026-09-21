@@ -121,7 +121,7 @@ This script performs three successive operations:
 
 **Building the MATAM Singularity image.** Conversion from a Docker image (Biocontainers) to a `.sif` file encapsulates all of MATAM's heavy dependencies (Python 2/3, SGA assembler) without polluting the cluster host environment.
 
-**Downloading the SILVA SSURef NR95 database.** Retrieval uses a fallback mechanism: multiple URLs are tested in succession to guarantee the download even if a mirror is unavailable.
+**Downloading the SILVA 138.2 SSURef NR99 database.** Retrieval uses a fallback mechanism: multiple URLs are tested in succession to guarantee the download even if a mirror is unavailable.
 
 **Adaptive indexing.** Indexing the reference database requires the `indexdb_rna` binary from SortMeRNA. The script first checks whether this binary is available in the main MATAM image. If not, it dynamically downloads a dedicated SortMeRNA container to run this operation.
 
