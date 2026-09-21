@@ -31,7 +31,7 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | GCC | 4.8.4 / 8.1.0 | SLURM modules | C/C++ compiler (system dependencies) |
 | Singularity | cluster | System binary | Isolation and execution of MATAM and SortMeRNA environments |
 | SortMeRNA | 2.1b | Singularity image (Biocontainers) | Reference database indexing |
-| USEARCH | 9.2.64 | SLURM module | Ultra-fast sequence dereplication |
+| rclone | 1.55.1 | SLURM module | Build-time upload and per-task download of the SILVA 138.2 MATAM database (S3 remote `s3_uca:lmge-tenebrion`) |
 | MATAM | 1.6.1 | Singularity images | De novo assembly targeting 16S rRNA |
 | Salmon | 1.10.2 | Conda 23.3.1 | Quantification via pseudo-alignment and EM algorithm |
 | R / DADA2 | — | Local R script | Taxonomic assignment (Bayesian classifier + exact identity) |
@@ -47,8 +47,9 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 ├── bin/                        # SLURM submission scripts
 │   ├── 16S_fastqc.slurm        # Step 1 — Initial quality control
 │   ├── 16S_multiqc.slurm       # Step 2 — QC report aggregation
-│   ├── pull_MATAM_sif.slurm    # Step 3 — Install MATAM via Singularity
-│   ├── 16S_MATAM.slurm         # Step 4 — Hybrid production pipeline
+│   ├── pull_MATAM_sif.slurm    # Step 3  — Install MATAM via Singularity
+│   ├── build_matam_silva138_2.slurm # Step 3b — Build SILVA 138.2 NR99 MATAM DB and push it to S3
+│   ├── 16S_MATAM.slurm         # Step 4 — Hybrid production pipeline (paired-end)
 │   ├── assign_taxo_MATAM.R     # Step 5 — Taxonomic assignment (DADA2/SILVA)
 │   └── 16S_analysis.R          # Step 6 — Diversity analysis and visualisation
 │
@@ -64,7 +65,7 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 ├── resources/                  # Conda environments
 └── results/
     ├── qc/                     # FastQC and MultiQC reports
-    ├── PRODUCTION_HYBRID/      # MATAM scaffolds + Salmon abundance table
+    ├── MATAM_PE_FINAL/         # MATAM scaffolds + Salmon abundance table (paired-end run — ⚠ see note below)
     ├── 16S/
     │   └── 16S_figure/         # Diversity plots (Step 6 output)
     └── all_matam_salmon_qiime_like_table_counts_wSpecies.tsv  # Final table (Step 5 output)
@@ -80,12 +81,15 @@ Scripts must be submitted in the following order from the project root:
 sbatch bin/16S_fastqc.slurm
 sbatch bin/16S_multiqc.slurm
 sbatch bin/pull_MATAM_sif.slurm
-sbatch bin/16S_MATAM.slurm
+sbatch bin/build_matam_silva138_2.slurm
+sbatch --array=0-N bin/16S_MATAM.slurm      # N = (number of samples in data/raw/) - 1
 Rscript bin/assign_taxo_MATAM.R
 Rscript bin/16S_analysis.R
 ```
 
 Each step must be completed before submitting the next. Steps 1 and 4 run as SLURM Arrays. Step 6 runs locally (off-cluster).
+
+> ⚠️ **Since the paired-end rewrite, `16S_MATAM.slurm` no longer self-submits as an array.** The previous version detected the number of samples in `data/raw/` and re-submitted itself automatically with the right `--array` range; the current script reads `${SLURM_ARRAY_TASK_ID}` directly and has no fallback. Submitting it with a bare `sbatch bin/16S_MATAM.slurm` (no `--array`) will fail immediately with an "unbound variable" error (`set -u`). You must pass `--array=0-N` explicitly, where `N` is `(number of *_R1.fastq.gz files in data/raw/) - 1` (e.g. `--array=0-43` for 44 samples).
 
 ---
 
@@ -121,21 +125,41 @@ This script performs three successive operations:
 
 **Adaptive indexing.** Indexing the reference database requires the `indexdb_rna` binary from SortMeRNA. The script first checks whether this binary is available in the main MATAM image. If not, it dynamically downloads a dedicated SortMeRNA container to run this operation.
 
+> ℹ️ This script still provides the MATAM `.sif` container used by every later step. The **reference database** it builds locally (SILVA SSURef NR95) is however no longer the one used in production — since the paired-end rewrite, Step 4 downloads a separately-built SILVA **138.2** database from S3 (see Step 3b) rather than reading a local path.
+
 ---
 
-### Step 4 — `16S_MATAM.slurm`: Hybrid production pipeline
+### Step 3b — `build_matam_silva138_2.slurm`: Reference database preparation (SILVA 138.2, S3-hosted)
 
-**Objective:** Transform validated raw sequences into a taxonomic abundance table. Runs as a SLURM Array, one job per sample.
+**Objective:** Build, once, the SILVA 138.2 NR99 reference database used by MATAM in production, and publish it to S3 so that every array task of Step 4 can pull the exact same database instead of relying on a shared local path.
+
+**Download.** The official SILVA 138.2 SSURef NR99 release (`SILVA_138.2_SSURef_NR99_tax_silva.fasta.gz`) is fetched directly from the ARB-SILVA mirror and decompressed.
+
+**Official MATAM preprocessing.** Unlike Step 3's manual, multi-fallback indexing logic, this step calls MATAM's own `matam_db_preprocessing.py` (run inside the MATAM container), which handles clustering (default 95 % identity, hence the `_NR95` suffix in the resulting file names) and SortMeRNA indexing automatically in a single call.
+
+**S3 upload.** The finished database (`*.clustered.fasta`, `*.complete.fasta` and their indexes) is synced with `rclone` to `s3_uca:lmge-tenebrion/resources/matam_db_138_2_official/`, the exact path Step 4 downloads from at runtime.
+
+This is a one-off maintenance script: re-run it only if the SILVA release changes or the S3 copy is lost/corrupted.
+
+---
+
+### Step 4 — `16S_MATAM.slurm`: Hybrid production pipeline (paired-end)
+
+**Objective:** Transform validated raw paired-end sequences into a taxonomic abundance table. Runs as a SLURM Array, one job per sample — the sample assigned to each task is resolved from the `${SLURM_ARRAY_TASK_ID}`-th `*_R1.fastq.gz` file found in `data/raw/` (see the warning in *Running the pipeline* about the required `--array` range).
 
 The script chains four sub-steps:
 
-**Strict cleaning (Python).** An on-the-fly Python script reads sequences as a continuous stream (*streaming*), without loading the entire file into memory — a strategy suited to large volumes. The first 15 nucleotides of each read are trimmed (a region often noisy due to primers), and sequences that are too short are discarded (>50 nt).
+**Paired-end cleaning (Python).** An on-the-fly Python script reads R1 and R2 as a continuous stream (*streaming*, no full-file loading), trimming the first 15 nucleotides of each mate (a region often noisy due to primers) and low/high-capping base qualities. A pair is kept only if **both** mates are still ≥ 50 nt after clipping; kept pairs are written to three files: cleaned `_R1`/`_R2` FASTQs (for Salmon) and one interleaved R1+R2 FASTQ (for MATAM). Unlike the previous single-end version, R2 is no longer discarded.
 
-**Dereplication (USEARCH).** Strictly identical reads are merged into unique entities. This step acts as a strong information compression and considerably reduces the search space and time complexity for the downstream assembler.
+**Reference database retrieval (rclone, per task).** Each array task independently pulls the pre-built SILVA 138.2 NR99 MATAM database (Step 3b) from the `lmge-tenebrion` S3 bucket into its own scratch space, rather than pointing at one shared local path — trading a small per-task download for reproducibility and independence from the local filesystem layout.
 
-**De novo assembly (MATAM).** Unlike standard ASV approaches, MATAM uses short reads and the SILVA database to reconstruct near-complete 16S rRNA sequences (scaffolds). This reconstruction achieves much finer taxonomic resolution.
+**De novo assembly (MATAM).** MATAM/SGA reconstructs near-complete 16S rRNA scaffolds from the interleaved paired-end reads against the SILVA 138.2 database. There is **no dereplication step before assembly** in this version (see the note below).
 
-**Probabilistic quantification (Salmon).** Once the 16S sequence catalogue is assembled, Salmon indexes it and virtually aligns the original reads against it. The **Expectation-Maximization (EM)** algorithm resolves the ambiguity of reads mapping with equivalent probability to multiple closely related taxa, producing a robust final abundance table.
+**Probabilistic quantification (Salmon, paired-end).** Salmon indexes the assembled scaffolds, then maps the original cleaned R1/R2 reads back against them in true paired mode (`-1`/`-2`, `-l A`, `--validateMappings`). The **Expectation-Maximization (EM)** algorithm resolves reads mapping ambiguously to several closely related scaffolds, producing the final per-sample abundance table (`quant.sf` → `<sample>_PE_abundance.tsv`).
+
+> ⚠️ **Dropped dereplication step.** The header comment of `16S_MATAM.slurm` still lists USEARCH as a tool and "dereplication" as part of the goal, but no `usearch` call remains in the script body (nor the corresponding `module load`) — the Tools table above has been updated to reflect the script as it actually runs. Deduplicating identical reads while keeping R1/R2 pairs linked is non-trivial, which is presumably why it was dropped for the paired-end rewrite, but two things are worth checking: (1) whether this was intentional or an oversight, and (2) whether feeding MATAM's SGA assembler the *full*, non-dereplicated read set noticeably increases its runtime/memory footprint compared to the old dereplicated single-end input, on samples with high PCR duplication.
+>
+> ⚠️ **Downstream compatibility.** This script now writes to `results/MATAM_PE_FINAL/<sample>/` with files named `<sample>_PE_scaffolds.fasta` / `<sample>_PE_abundance.tsv`, whereas `bin/16S_export_results.py` (which compiles every sample's scaffolds + abundances into one master table before Step 5) still hardcodes the old `results/PRODUCTION_HYBRID/` path and the old `<sample>_scaffolds.fasta` / `<sample>_abundance_salmon.tsv` file names. Until that script is updated to match, it will find no samples and produce an empty export.
 
 ---
 
@@ -227,19 +251,22 @@ Raw data (FASTQ)
 [2] MultiQC             Aggregated QC report (interactive HTML)
         |
         v
-[3] pull_MATAM_sif      MATAM Singularity image + indexed SILVA database
+[3] pull_MATAM_sif      MATAM Singularity image (.sif)
         |
         v
-[4a] Cleaning           Primer clipping + length filtering (Python streaming)
+[3b] build_matam_silva138_2   SILVA 138.2 NR99 DB, clustered 95% (matam_db_preprocessing.py) -> pushed to S3
         |
         v
-[4b] Dereplication      Compression of identical reads (USEARCH)
+[4a] Cleaning (PE)      Primer clipping + length filtering on R1+R2 pairs (Python streaming)
         |
         v
-[4c] Assembly           Reconstruction of near-complete 16S scaffolds (MATAM)
+[4b] DB retrieval       Per-task rclone pull of the SILVA 138.2 DB from S3
         |
         v
-[4d] Quantification     Per-sequence abundance table (Salmon + EM)
+[4c] Assembly           Reconstruction of near-complete 16S scaffolds (MATAM, interleaved PE input, no dereplication)
+        |
+        v
+[4d] Quantification     Per-sequence abundance table (Salmon, true paired-end + EM)
         |
         v
 [5a] Genus assignment   DADA2 Bayesian classifier × SILVA v138.2 (minBoot=80)
@@ -266,12 +293,13 @@ Raw data (FASTQ)
 
 - HPC cluster with **SLURM** job scheduler
 - **Singularity / Apptainer** available as a system binary
-- Modules available on the cluster: `fastqc/0.11.7`, `MultiQC/1.7`, `python/3.7.1`, `gcc/4.8.4`, `gcc/8.1.0`, `usearch/9.2.64`
+- **rclone** (module `rclone/1.55.1`) configured with an S3 remote (`s3_uca`) pointing to the `lmge-tenebrion` bucket — same remote as the Shotgun pipeline — used to publish (Step 3b) and then pull (Step 4, per array task) the pre-built SILVA 138.2 NR99 MATAM database at `resources/matam_db_138_2_official`
+- Modules available on the cluster: `fastqc/0.11.7`, `MultiQC/1.7`, `python/3.7.1`, `gcc/4.8.4`, `gcc/8.1.0`
 - **Conda** environment (version 23.3.1) including Salmon 1.10.2
 - **R** with packages: `dada2`, `dplyr`, `tidyr`, `readr`, `parallel` (Step 5) and `ggplot2`, `vegan`, `tibble`, `stringr`, `forcats`, `colorspace`, `patchwork`, `ggrepel`, `scales`, `ggdendro` (Step 6; `ggdendro` is auto-installed by the script if missing)
-- SILVA v138.2 reference databases (`toGenus_trainset.fa.gz` and `assignSpecies.fa.gz`) in `data/16S/SILVA/`
+- SILVA v138.2 reference databases (`toGenus_trainset.fa.gz` and `assignSpecies.fa.gz`) in `data/16S/SILVA/` (used by DADA2 in Step 5 — distinct from the MATAM assembly database above)
 - Metadata file (`data/16S/metadata.tsv`) with columns `sample-id` and `condition`
-- Internet access from compute nodes for downloading SILVA and Singularity images
+- Internet/S3 access from compute nodes for downloading SILVA, Singularity images, and the MATAM database
 
 ---
 
