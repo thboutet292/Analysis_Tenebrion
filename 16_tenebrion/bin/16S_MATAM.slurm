@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=100G
 #SBATCH --partition=long,lmge
-#SBATCH --time=3-00:00:00
+#SBATCH --time=10-00:00:00
 #SBATCH --chdir=/home/thboutet/projets/16_tenebrion
 
 #######################################################################################
