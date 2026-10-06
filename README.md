@@ -384,29 +384,8 @@ shotgun_tenebrion/
     ├── kraken2_pluspfp/               # Kraken2 reports vs. PlusPFP database
     ├── bracken_pluspfp/               # Bracken species-level abundance tables (PlusPFP)
     ├── kraken2_addon/                 # Kraken2 reports vs. custom Insect Addon database
-    ├── bracken_addon/                 # Bracken species-level abundance tables (Addon)
-    ├── assembly_megahit/              # Per-sample contigs + MEGAHIT logs
-    ├── global_catalog/                # Non-redundant contig catalog (MMseqs2)
-    ├── coverm/                        # Per-sample coverage tables + cached BAMs
-    ├── metabat2_bins/                 # MAGs from MetaBAT2 + global depth matrix
-    ├── semibin2_bins/                 # MAGs from SemiBin2
-    ├── concoct_bins/                  # MAGs from CONCOCT
-    ├── checkm2_qc/                    # Completeness/contamination reports, one subfolder per binner
-    │   ├── metabat2/                  # quality_report.tsv for MetaBAT2 MAGs
-    │   ├── semibin2/                  # quality_report.tsv for SemiBin2 MAGs
-    │   └── concoct/                   # quality_report.tsv for CONCOCT MAGs
-    ├── filtered_bins_metabat2/        # MetaBAT2 MAGs passing the CheckM2 quality filter
-    ├── filtered_bins_semibin2/        # SemiBin2 MAGs passing the CheckM2 quality filter
-    ├── filtered_bins_concoct/         # CONCOCT MAGs passing the CheckM2 quality filter
-    ├── gtdbtk_taxo_metabat2/          # GTDB-Tk taxonomy assignments for MetaBAT2 MAGs
-    ├── gtdbtk_taxo_semibin2/          # GTDB-Tk taxonomy assignments for SemiBin2 MAGs
-    ├── gtdbtk_taxo_concoct/           # GTDB-Tk taxonomy assignments for CONCOCT MAGs
-    ├── dram_metabat2_raw/             # DRAM annotate output, one subfolder per MetaBAT2 MAG
-    ├── dram_metabat2_distill/         # DRAM distill output, one subfolder per MetaBAT2 MAG
-    ├── dram_semibin2_raw/             # DRAM annotate output, one subfolder per SemiBin2 MAG
-    ├── dram_semibin2_distill/         # DRAM distill output, one subfolder per SemiBin2 MAG
-    ├── dram_concoct_raw/              # DRAM annotate output, one subfolder per CONCOCT MAG
-    └── dram_concoct_distill/          # DRAM distill output, one subfolder per CONCOCT MAG
+    └── bracken_addon/                 # Bracken species-level abundance tables (Addon)
+    
 ```
 
 > Note: unlike the 16S pipeline (fully local `data/` and `results/`), the shotgun pipeline uses an **S3 bucket** (`lmge-tenebrion`) as the primary storage for raw and cleaned reads, accessed via `rclone`.
@@ -420,26 +399,7 @@ sbatch bin/host_decontamination_bowtie2.slurm
 sbatch bin/build_kraken2_db.slurm               # once — builds the PlusPFP database on S3
 sbatch bin/build_kraken_custom.slurm            # once — builds the insect addon database on S3
 sbatch bin/shotgun_kraken2_bracken_addon.slurm  # per-sample array — dual-database profiling
-sbatch bin/shotgun_megahit_full.slurm           # per-sample array — de novo assembly (MEGAHIT)
-sbatch bin/pull_coverm.slurm                    # once — pulls the CoverM Apptainer image
-sbatch bin/shotgun_coverm.slurm                 # per-sample array — catalog build (leader task) + coverage profiling
-sbatch bin/pull_binners.slurm                   # once — pulls the MetaBAT2 + CONCOCT + SemiBin2 Apptainer images
-sbatch bin/shotgun_metabat2.slurm               # single job — binning with MetaBAT2
-sbatch bin/shotgun_semibin2.slurm               # single job — binning with SemiBin2
-sbatch bin/shotgun_concoct.slurm                # single job — binning with CONCOCT
-sbatch bin/shotgun_maxbin2.slurm                # single job — binning with MaxBin2
-sbatch bin/pull_checkm2.slurm                   # once — pulls the CheckM2 image + downloads the ML database locally
-sbatch bin/build_checkm2_db.slurm               # once — re-uploads the CheckM2 database to S3, for cluster-wide reuse
-sbatch bin/shotgun_checkm2.slurm                # single job — QC of all 3 binners' MAGs (CheckM2)
-sbatch bin/pull_gtdbtk.slurm                    # once — pulls the GTDB-Tk Apptainer image
-sbatch bin/build_gtdbtk.slurm                   # once — uploads the GTDB-Tk R214 database to S3
-sbatch bin/shotgun_gtdbtk.slurm                 # single job — taxonomic assignment of all 3 binners' MAGs (GTDB-Tk)
-sbatch bin/setup_dram_db.slurm                  # maintenance — (re)builds the viral + peptidase DRAM sub-databases on S3
 
-# one sbatch per MAG, for each binner (see loop example below)
-sbatch bin/shotgun_DRAM.slurm metabat2 bin.42
-sbatch bin/shotgun_DRAM.slurm semibin2 SemiBin_125
-sbatch bin/shotgun_DRAM.slurm concoct   71
 ```
 
 `shotgun_kraken2_bracken.slurm` (PlusPFP-only) is the earlier, single-database version of the profiling step; `shotgun_kraken2_bracken_addon.slurm` supersedes it once the insect addon database is available, since it reproduces the PlusPFP run and adds the addon pass in the same job.
