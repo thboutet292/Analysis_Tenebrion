@@ -332,17 +332,6 @@ The entire pipeline is designed to run on an **HPC computing cluster** via the *
 | Apptainer/Singularity | cluster | System binary | Execution of the Kraken2/Bracken, CoverM, binning, CheckM2, GTDB-Tk and DRAM containers |
 | Kraken2 | *(per container image)* | Apptainer image | K-mer-based taxonomic assignment of paired reads |
 | Bracken | *(per container image)* | Apptainer image | Bayesian re-estimation of species-level abundances from Kraken2 reports |
-| NCBI Datasets CLI | v2 (linux-amd64) | Downloaded binary | Genome retrieval for the custom insect-focused Kraken2 addon database |
-| MEGAHIT | 1.2.9 | SLURM module | De novo metagenomic assembly, run independently per sample (`--presets meta-sensitive`) |
-| MMseqs2 | 13-45111 | SLURM module | Contig catalog construction via linear-time clustering (dereplication) |
-| CoverM | 0.7.0 | Apptainer image | Read mapping (minimap2-sr) and coverage/abundance quantification against the non-redundant catalog |
-| MetaBAT2 | 2.15 | Apptainer image | Genome binning via TNF composition + differential coverage (`jgi_summarize_bam_contig_depths`) |
-| SemiBin2 | 2.1.0 | Apptainer image | Genome binning via self-supervised deep learning (`single_easy_bin`) |
-| CONCOCT | 1.1.0 | Apptainer image | Genome binning via Gaussian mixture clustering on chunked contigs |
-| MaxBin2 | 2.2.7 | Apptainer image | Genome binning via Expectation-Maximization on tetranucleotide frequency + abundance (`run_MaxBin.pl`) |
-| CheckM2 | 1.0.2 | Apptainer image | MAG quality assessment (completeness/contamination) via Machine Learning (Diamond BlastP) |
-| GTDB-Tk | 2.3.2 (DB release R214) | Apptainer image | Taxonomic assignment of MAGs (marker gene placement + FastANI) |
-| DRAM | 1.4.6 | Apptainer image | Functional annotation of MAGs (KEGG, dbCAN/CAZymes, MEROPS, Pfam, VOG) via `annotate` + `distill` |
 
 ---
 
