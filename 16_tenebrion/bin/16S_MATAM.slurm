@@ -11,8 +11,17 @@
 #SBATCH --chdir=/home/thboutet/projets/16_tenebrion
 
 #######################################################################################
-#   PIPELINE 16S PAIRED-END - PRODUCTION SLURM ARRAY (44 ECHANTILLONS)
+
+#   AUTHORS :   Thomas BOUTET (IHP,LMGE)
+#   DATE    :   2026
+#   SCRIPT  :   16S_MATAM.slurm
+#   TOOLS   :   MATAM 1.6.1 ; Salmon 1.10.2 
+
 #######################################################################################
+
+# sbatch bin/16S_MATAM.slurm
+
+######################################################################################
 
 set -uo pipefail
 
